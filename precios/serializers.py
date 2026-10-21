@@ -163,6 +163,16 @@ class EnviarEmailSerializer(serializers.Serializer):
     mensaje = serializers.CharField(required=False, allow_blank=True, default="")
 
 
+class SolicitarResetPasswordSerializer(serializers.Serializer):
+    username = serializers.CharField()
+
+
+class ConfirmarResetPasswordSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    password = serializers.CharField(min_length=8)
+
+
 class ContactoPublicoSerializer(serializers.Serializer):
     """Formulario de contacto del sitio público (lausane.com.ar)."""
 

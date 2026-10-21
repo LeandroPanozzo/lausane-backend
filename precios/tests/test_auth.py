@@ -1,5 +1,9 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import default_token_generator
+from django.core import mail
 from django.core.cache import cache
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from rest_framework.test import APITestCase
 
 
@@ -57,3 +61,77 @@ class CookieAuthTests(APITestCase):
         self.client.post("/api/auth/logout/")
         resp = self.client.get("/api/clientes/")
         self.assertEqual(resp.status_code, 401)
+
+
+class PasswordResetTests(APITestCase):
+    """Recuperar contraseña: mismo mensaje exista o no el usuario (no revela
+    qué usuarios existen), manda el mail solo si hay un email cargado, y el
+    link solo sirve una vez y con el usuario correcto."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="tester", password="Sup3rSecret!42", email="tester@example.com",
+        )
+
+    def _uid_token(self, user):
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        return uid, token
+
+    def test_solicitar_con_usuario_existente_manda_el_mail(self):
+        resp = self.client.post("/api/auth/password-reset/", {"username": "tester"}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["tester@example.com"])
+        self.assertIn("/reset-password/", mail.outbox[0].body)
+
+    def test_solicitar_con_usuario_inexistente_responde_igual_pero_no_manda_mail(self):
+        resp = self.client.post("/api/auth/password-reset/", {"username": "no-existe"}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_solicitar_con_usuario_sin_email_no_manda_mail(self):
+        get_user_model().objects.create_user(username="sinmail", password="Sup3rSecret!42")
+        resp = self.client.post("/api/auth/password-reset/", {"username": "sinmail"}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_confirmar_con_token_valido_cambia_la_contrasena(self):
+        uid, token = self._uid_token(self.user)
+        resp = self.client.post(
+            "/api/auth/password-reset/confirmar/",
+            {"uid": uid, "token": token, "password": "NuevaClaveSegura123"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        login = self.client.post(
+            "/api/auth/token/", {"username": "tester", "password": "NuevaClaveSegura123"}, format="json",
+        )
+        self.assertEqual(login.status_code, 200)
+
+    def test_confirmar_con_token_invalido_falla(self):
+        uid, _ = self._uid_token(self.user)
+        resp = self.client.post(
+            "/api/auth/password-reset/confirmar/",
+            {"uid": uid, "token": "token-trucho", "password": "NuevaClaveSegura123"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_confirmar_con_token_ya_usado_falla_la_segunda_vez(self):
+        uid, token = self._uid_token(self.user)
+        primera = self.client.post(
+            "/api/auth/password-reset/confirmar/",
+            {"uid": uid, "token": token, "password": "NuevaClaveSegura123"},
+            format="json",
+        )
+        self.assertEqual(primera.status_code, 200)
+
+        segunda = self.client.post(
+            "/api/auth/password-reset/confirmar/",
+            {"uid": uid, "token": token, "password": "OtraClaveMas456"},
+            format="json",
+        )
+        self.assertEqual(segunda.status_code, 400)

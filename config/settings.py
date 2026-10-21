@@ -114,6 +114,7 @@ REST_FRAMEWORK = {
         'user': '120/min',
         'login': '10/min',
         'contacto': '5/min',
+        'password_reset': '5/min',
     },
 }
 
