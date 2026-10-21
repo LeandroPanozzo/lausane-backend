@@ -1,0 +1,353 @@
+from decimal import Decimal
+
+from django.conf import settings
+from django.core.mail import EmailMessage
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
+from rest_framework import generics, permissions, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from .models import Cliente, ChapaGalvanizada, ConfiguracionGlobal, MarkupEspesorChapa, Tubo, Presupuesto
+from .serializers import (
+    ChapaGalvanizadaSerializer,
+    ClienteSerializer,
+    ConfiguracionGlobalSerializer,
+    ContactoPublicoSerializer,
+    CotizacionDolarSerializer,
+    EnviarEmailSerializer,
+    MarkupEspesorChapaSerializer,
+    PresupuestoListSerializer,
+    PresupuestoSerializer,
+    TuboSerializer,
+)
+from .services import calculo_precios, cotizacion_dolar
+from .services.pdf_presupuesto import generar_pdf_presupuesto
+from .services.excel_presupuesto import generar_excel_presupuesto
+from .services.email_presupuesto import enviar_presupuesto_por_email
+
+
+class ClienteViewSet(viewsets.ModelViewSet):
+    """
+    CRUD completo de clientes.
+    GET /api/clientes/                -> listar (con ?search= por nombre)
+    POST /api/clientes/               -> crear cliente nuevo
+    GET/PUT/PATCH/DELETE /api/clientes/{id}/
+    GET /api/clientes/{id}/precios/   -> lista de precios calculada (chapa)
+    """
+
+    queryset = Cliente.objects.all()
+    serializer_class = ClienteSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    search_fields = ["nombre", "numero"]
+
+    @action(detail=True, methods=["get"], url_path="precios")
+    def precios(self, request, pk=None):
+        cliente = get_object_or_404(Cliente, pk=pk)
+        config = ConfiguracionGlobal.actual()
+        try:
+            cotizacion = cotizacion_dolar.obtener_cotizacion_actual(
+                forzar_actualizacion=request.query_params.get("forzar_dolar") == "true"
+            )
+        except cotizacion_dolar.CotizacionDolarError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        precios = calculo_precios.calcular_lista_precios_chapa(cliente, config, cotizacion.venta)
+        return Response({
+            "cliente": ClienteSerializer(cliente).data,
+            "cotizacion_dolar": CotizacionDolarSerializer(cotizacion).data,
+            "precios": precios,
+        })
+
+
+class MarkupEspesorChapaViewSet(viewsets.ModelViewSet):
+    """Tabla de recargos por espesor de chapa (compartida por todos los clientes)."""
+
+    queryset = MarkupEspesorChapa.objects.all()
+    serializer_class = MarkupEspesorChapaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filterset_fields = ["tipo"]
+
+
+class TuboViewSet(viewsets.ModelViewSet):
+    """CRUD de tubos + precio calculado."""
+
+    queryset = Tubo.objects.all()
+    serializer_class = TuboSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    search_fields = ["dimensiones"]
+
+    @action(detail=True, methods=["get"], url_path="precio")
+    def precio(self, request, pk=None):
+        tubo = get_object_or_404(Tubo, pk=pk)
+        config = ConfiguracionGlobal.actual()
+        try:
+            cotizacion = cotizacion_dolar.obtener_cotizacion_actual(
+                forzar_actualizacion=request.query_params.get("forzar_dolar") == "true"
+            )
+        except cotizacion_dolar.CotizacionDolarError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        precio = calculo_precios.calcular_precio_tubo(tubo, config, cotizacion.venta)
+        return Response({
+            "cotizacion_dolar": CotizacionDolarSerializer(cotizacion).data,
+            "precio": precio,
+        })
+
+    @action(detail=False, methods=["get"], url_path="lista-precios")
+    def lista_precios(self, request):
+        config = ConfiguracionGlobal.actual()
+        try:
+            cotizacion = cotizacion_dolar.obtener_cotizacion_actual(
+                forzar_actualizacion=request.query_params.get("forzar_dolar") == "true"
+            )
+        except cotizacion_dolar.CotizacionDolarError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        precios = calculo_precios.calcular_lista_precios_tubos(config, cotizacion.venta)
+        return Response({
+            "cotizacion_dolar": CotizacionDolarSerializer(cotizacion).data,
+            "incremento_tubos": config.incremento_tubos,
+            "tubos": precios,
+        })
+
+
+class ChapaGalvanizadaViewSet(viewsets.ModelViewSet):
+    """CRUD de chapa galvanizada (por espesor/ancho) + precio calculado."""
+
+    queryset = ChapaGalvanizada.objects.all()
+    serializer_class = ChapaGalvanizadaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    search_fields = ["espesor", "ancho_mm"]
+
+    @action(detail=False, methods=["get"], url_path="lista-precios")
+    def lista_precios(self, request):
+        config = ConfiguracionGlobal.actual()
+        try:
+            cotizacion = cotizacion_dolar.obtener_cotizacion_actual(
+                forzar_actualizacion=request.query_params.get("forzar_dolar") == "true"
+            )
+        except cotizacion_dolar.CotizacionDolarError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        precios = calculo_precios.calcular_lista_precios_galvanizada(config, cotizacion.venta)
+        return Response({
+            "cotizacion_dolar": CotizacionDolarSerializer(cotizacion).data,
+            "incremento_galvanizada": config.incremento_galvanizada,
+            "chapas": precios,
+        })
+
+
+class ConfiguracionGlobalView(generics.RetrieveUpdateAPIView):
+    """GET/PUT/PATCH /api/configuracion/ -> precios base DD/Negra e incremento de tubos."""
+
+    serializer_class = ConfiguracionGlobalSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return ConfiguracionGlobal.actual()
+
+
+class CotizacionDolarView(APIView):
+    """
+    GET /api/dolar/actual/             -> cotización en uso (usa caché)
+    GET /api/dolar/actual/?forzar=true -> fuerza a consultar la API externa
+
+    Si el sistema está en modo manual (ver ConfiguracionGlobal.dolar_modo),
+    la cotización "en uso" es la cargada a mano — no vence sola — y la
+    respuesta suma "referencia_oficial" con la cotización online del momento,
+    solo para mostrarla de referencia (no se usa en los cálculos). Ahí
+    `forzar=true` refresca esa referencia, no la que está en uso.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        forzar = request.query_params.get("forzar") == "true"
+        config = ConfiguracionGlobal.actual()
+        en_modo_manual = config.dolar_modo == ConfiguracionGlobal.DOLAR_MODO_MANUAL
+
+        try:
+            if en_modo_manual:
+                cot = cotizacion_dolar.obtener_cotizacion_actual()
+                referencia = cotizacion_dolar.obtener_cotizacion_oficial_referencia(forzar_actualizacion=forzar)
+            else:
+                cot = cotizacion_dolar.obtener_cotizacion_actual(forzar_actualizacion=forzar)
+                referencia = None
+        except cotizacion_dolar.CotizacionDolarError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        data = CotizacionDolarSerializer(cot).data
+        data["forzado_manual"] = en_modo_manual
+        data["referencia_oficial"] = CotizacionDolarSerializer(referencia).data if referencia else None
+        return Response(data)
+
+
+class CotizacionDolarManualView(APIView):
+    """
+    POST /api/dolar/manual/ -> cargar una cotización a mano y FORZAR al
+    sistema a usarla en los cálculos en vez de la oficial online, hasta que
+    se cargue otra o se llame a /api/dolar/volver-oficial/.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        compra = request.data.get("compra")
+        venta = request.data.get("venta")
+        if compra is None or venta is None:
+            return Response(
+                {"detail": "Se requieren los campos 'compra' y 'venta'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        cot = cotizacion_dolar.fijar_cotizacion_manual(Decimal(str(compra)), Decimal(str(venta)))
+        data = CotizacionDolarSerializer(cot).data
+        data["forzado_manual"] = True
+        data["referencia_oficial"] = None
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
+class CotizacionDolarVolverOficialView(APIView):
+    """POST /api/dolar/volver-oficial/ -> saca el pin manual y vuelve a usar
+    la cotización oficial online (trayendo una fresca de una)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        try:
+            cot = cotizacion_dolar.volver_a_cotizacion_oficial()
+        except cotizacion_dolar.CotizacionDolarError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        data = CotizacionDolarSerializer(cot).data
+        data["forzado_manual"] = False
+        data["referencia_oficial"] = None
+        return Response(data)
+
+
+class PresupuestoViewSet(viewsets.ModelViewSet):
+    """
+    Presupuestos armados a partir del carrito del frontend.
+
+    POST /api/presupuestos/            -> crea el presupuesto con todos los ítems del carrito
+    GET  /api/presupuestos/            -> historial (liviano, sin ítems)
+    GET  /api/presupuestos/{id}/       -> detalle completo con ítems
+    GET  /api/presupuestos/{id}/pdf/   -> descarga el PDF
+    GET  /api/presupuestos/{id}/excel/ -> descarga el Excel
+    POST /api/presupuestos/{id}/enviar-email/  -> envía el PDF por correo
+    """
+
+    queryset = Presupuesto.objects.select_related("cliente").prefetch_related("items")
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return PresupuestoListSerializer
+        return PresupuestoSerializer
+
+    @action(detail=True, methods=["get"], url_path="pdf")
+    def pdf(self, request, pk=None):
+        presupuesto = self.get_object()
+        pdf_bytes = generar_pdf_presupuesto(presupuesto)
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'inline; filename="presupuesto_lausane_{presupuesto.numero}.pdf"'
+        return response
+
+    @action(detail=True, methods=["get"], url_path="excel")
+    def excel(self, request, pk=None):
+        presupuesto = self.get_object()
+        excel_bytes = generar_excel_presupuesto(presupuesto)
+        response = HttpResponse(
+            excel_bytes, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = f'attachment; filename="presupuesto_lausane_{presupuesto.numero}.xlsx"'
+        return response
+
+    @action(detail=True, methods=["post"], url_path="enviar-email")
+    def enviar_email(self, request, pk=None):
+        presupuesto = self.get_object()
+        serializer = EnviarEmailSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            enviar_presupuesto_por_email(
+                presupuesto,
+                serializer.validated_data["destinatario"],
+                serializer.validated_data.get("mensaje", ""),
+            )
+        except Exception as exc:  # noqa: BLE001 — cualquier falla de SMTP se informa igual
+            return Response(
+                {"detail": f"No se pudo enviar el email: {exc}"}, status=status.HTTP_502_BAD_GATEWAY
+            )
+
+        presupuesto.estado = Presupuesto.ESTADO_ENVIADO
+        presupuesto.save(update_fields=["estado"])
+        return Response({"detail": "Presupuesto enviado por email correctamente."})
+
+    @action(detail=True, methods=["post"], url_path="marcar-enviado")
+    def marcar_enviado(self, request, pk=None):
+        """Se llama después de compartir por WhatsApp (no hay forma de confirmar la entrega, pero sí de marcarlo)."""
+        presupuesto = self.get_object()
+        presupuesto.estado = Presupuesto.ESTADO_ENVIADO
+        presupuesto.save(update_fields=["estado"])
+        return Response(PresupuestoSerializer(presupuesto).data)
+
+
+class ContactoPublicoView(APIView):
+    """
+    POST /api/contacto/ — formulario de contacto del sitio público
+    (lausane.com.ar). Sin autenticación, con throttle propio para evitar spam.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = "contacto"
+
+    def post(self, request):
+        serializer = ContactoPublicoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = serializer.validated_data
+
+        cuerpo = (
+            f"Nombre: {datos['nombre']}\n"
+            f"Email: {datos['email']}\n"
+            f"Teléfono: {datos.get('telefono') or '-'}\n\n"
+            f"{datos['mensaje']}"
+        )
+        asunto = f"[Contacto web] {datos.get('asunto') or 'Nueva consulta'}"
+
+        email = EmailMessage(
+            subject=asunto,
+            body=cuerpo,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[settings.CONTACTO_EMAIL_DESTINO],
+            reply_to=[datos["email"]],
+        )
+        try:
+            email.send(fail_silently=False)
+        except Exception as exc:  # noqa: BLE001 — cualquier falla de SMTP se informa igual
+            return Response(
+                {"detail": f"No se pudo enviar el mensaje: {exc}"}, status=status.HTTP_502_BAD_GATEWAY
+            )
+
+        return Response({"detail": "Mensaje enviado. Te vamos a contactar a la brevedad."})
+
+
+class PresupuestoPublicoPDFView(APIView):
+    """
+    GET /api/presupuestos/publico/<token>/pdf/
+
+    Sin autenticación: es el link que se comparte por WhatsApp o email para
+    que el cliente pueda ver/descargar su presupuesto sin tener que loguearse.
+    El token es un UUID random, no adivinable.
+    """
+
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, token):
+        presupuesto = get_object_or_404(Presupuesto, token_publico=token)
+        pdf_bytes = generar_pdf_presupuesto(presupuesto)
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'inline; filename="presupuesto_lausane_{presupuesto.numero}.pdf"'
+        return response
+
