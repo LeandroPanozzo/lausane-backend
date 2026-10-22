@@ -5,7 +5,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.test import APITestCase
 
-from precios.models import ChapaGalvanizada, Cliente, ConfiguracionGlobal, MarkupEspesorChapa, Tubo
+from precios.models import ChapaGalvanizada, ChapaGruesa, Cliente, ConfiguracionGlobal, MarkupEspesorChapa, Tubo
 from precios.services import calculo_precios
 
 
@@ -261,3 +261,84 @@ class ChapaGalvanizadaAPITests(APITestCase):
         fila = next(c for c in resp.data["chapas"] if c["id"] == creada["id"])
         self.assertFalse(fila["usar_incremento_general"])
         self.assertEqual(Decimal(str(fila["precio_venta_usd_kg"])), Decimal("1.5").quantize(Decimal("0.00001")))
+
+
+class CalcularPrecioGruesaTests(TestCase):
+    """Misma lógica que galvanizada: costo propio en U$S/kg + incremento
+    general, en vez de un % sobre una base compartida."""
+
+    def test_encadena_costo_incremento_y_cotizacion(self):
+        config = ConfiguracionGlobal(incremento_gruesas=Decimal("0.20"))
+        chapa = ChapaGruesa(espesor="25", ancho_mm="2000", costo_usd_kg=Decimal("1.8"))
+        resultado = calculo_precios.calcular_precio_gruesa(chapa, config, cotizacion=Decimal("1000"))
+
+        precio_usd_kg_esperado = (Decimal("1.8") * Decimal("1.20")).quantize(Decimal("0.00001"))
+        precio_pesos_esperado = (Decimal("1.8") * Decimal("1.20") * Decimal("1000")).quantize(Decimal("0.01"))
+
+        self.assertEqual(resultado["precio_venta_usd_kg"], precio_usd_kg_esperado)
+        self.assertEqual(resultado["precio_venta_pesos_kg"], precio_pesos_esperado)
+
+    def test_usar_incremento_general_en_false_vende_al_costo(self):
+        config = ConfiguracionGlobal(incremento_gruesas=Decimal("0.20"))
+        chapa = ChapaGruesa(
+            espesor="25", ancho_mm="2000", costo_usd_kg=Decimal("1.8"), usar_incremento_general=False,
+        )
+        resultado = calculo_precios.calcular_precio_gruesa(chapa, config, cotizacion=Decimal("1000"))
+
+        self.assertEqual(resultado["incremento_aplicado"], Decimal("0"))
+        self.assertEqual(resultado["precio_venta_usd_kg"], Decimal("1.8").quantize(Decimal("0.00001")))
+        self.assertEqual(resultado["precio_venta_pesos_kg"], Decimal("1800.00"))
+
+    def test_inactiva_no_aparece_en_la_lista(self):
+        config = ConfiguracionGlobal.actual()
+        ChapaGruesa.objects.create(espesor="25", ancho_mm="2000", costo_usd_kg=Decimal("1.8"))
+        ChapaGruesa.objects.create(espesor="32", ancho_mm="2000", costo_usd_kg=Decimal("1.9"), activo=False)
+
+        precios = calculo_precios.calcular_lista_precios_gruesa(config, Decimal("1000"))
+        espesores = [p["espesor"] for p in precios]
+        self.assertIn("25", espesores)
+        self.assertNotIn("32", espesores)
+
+
+class ChapaGruesaAPITests(APITestCase):
+    def setUp(self):
+        cache.clear()  # el throttle de login no se resetea solo entre tests
+        self.user = get_user_model().objects.create_user(username="tester", password="Sup3rSecret!42")
+        self.client.post("/api/auth/token/", {"username": "tester", "password": "Sup3rSecret!42"}, format="json")
+
+    def test_crear_y_ver_en_lista_precios(self):
+        resp = self.client.post(
+            "/api/gruesas/", {"espesor": "25", "ancho_mm": "2000", "costo_usd_kg": "1.8"}, format="json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertTrue(resp.data["activo"])
+
+        resp = self.client.get("/api/gruesas/lista-precios/")
+        self.assertEqual(resp.status_code, 200)
+        fila = next(c for c in resp.data["chapas"] if c["espesor"] == "25")
+        self.assertIn("precio_venta_pesos_kg", fila)
+
+    def test_patch_puede_marcarla_inactiva(self):
+        creada = self.client.post(
+            "/api/gruesas/", {"espesor": "25", "ancho_mm": "2000", "costo_usd_kg": "1.8"}, format="json",
+        ).data
+        resp = self.client.patch(f"/api/gruesas/{creada['id']}/", {"activo": False}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.data["activo"])
+
+    def test_patch_puede_sacarle_el_incremento_general(self):
+        creada = self.client.post(
+            "/api/gruesas/", {"espesor": "25", "ancho_mm": "2000", "costo_usd_kg": "1.8"}, format="json",
+        ).data
+        self.assertTrue(creada["usar_incremento_general"])
+
+        resp = self.client.patch(
+            f"/api/gruesas/{creada['id']}/", {"usar_incremento_general": False}, format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.data["usar_incremento_general"])
+
+        resp = self.client.get("/api/gruesas/lista-precios/")
+        fila = next(c for c in resp.data["chapas"] if c["id"] == creada["id"])
+        self.assertFalse(fila["usar_incremento_general"])
+        self.assertEqual(Decimal(str(fila["precio_venta_usd_kg"])), Decimal("1.8").quantize(Decimal("0.00001")))

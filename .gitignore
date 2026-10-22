@@ -2,6 +2,7 @@ venv/
 __pycache__/
 *.pyc
 db.sqlite3
+db.sqlite3.bak*
 .env
 media/
 digitalocean_ssh_lausane.txt

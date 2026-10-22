@@ -9,9 +9,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Cliente, ChapaGalvanizada, ConfiguracionGlobal, MarkupEspesorChapa, Tubo, Presupuesto
+from .models import Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, MarkupEspesorChapa, Tubo, Presupuesto
 from .serializers import (
     ChapaGalvanizadaSerializer,
+    ChapaGruesaSerializer,
     ClienteSerializer,
     ConfiguracionGlobalSerializer,
     ContactoPublicoSerializer,
@@ -135,6 +136,32 @@ class ChapaGalvanizadaViewSet(viewsets.ModelViewSet):
         return Response({
             "cotizacion_dolar": CotizacionDolarSerializer(cotizacion).data,
             "incremento_galvanizada": config.incremento_galvanizada,
+            "chapas": precios,
+        })
+
+
+class ChapaGruesaViewSet(viewsets.ModelViewSet):
+    """CRUD de chapa gruesa (por espesor/ancho) + precio calculado."""
+
+    queryset = ChapaGruesa.objects.all()
+    serializer_class = ChapaGruesaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    search_fields = ["espesor", "ancho_mm"]
+
+    @action(detail=False, methods=["get"], url_path="lista-precios")
+    def lista_precios(self, request):
+        config = ConfiguracionGlobal.actual()
+        try:
+            cotizacion = cotizacion_dolar.obtener_cotizacion_actual(
+                forzar_actualizacion=request.query_params.get("forzar_dolar") == "true"
+            )
+        except cotizacion_dolar.CotizacionDolarError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        precios = calculo_precios.calcular_lista_precios_gruesa(config, cotizacion.venta)
+        return Response({
+            "cotizacion_dolar": CotizacionDolarSerializer(cotizacion).data,
+            "incremento_gruesas": config.incremento_gruesas,
             "chapas": precios,
         })
 

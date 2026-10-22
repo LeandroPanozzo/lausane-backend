@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .models import (
-    ChapaGalvanizada, Cliente, ConfiguracionGlobal, CotizacionDolar, MarkupEspesorChapa, Tubo,
+    ChapaGalvanizada, ChapaGruesa, Cliente, ConfiguracionGlobal, CotizacionDolar, MarkupEspesorChapa, Tubo,
     Presupuesto, PresupuestoItem,
 )
 
@@ -61,6 +61,14 @@ class TuboAdmin(admin.ModelAdmin):
 
 @admin.register(ChapaGalvanizada)
 class ChapaGalvanizadaAdmin(admin.ModelAdmin):
+    list_display = ("espesor", "ancho_mm", "costo_usd_kg", "activo")
+    list_filter = ("activo",)
+    search_fields = ("espesor", "ancho_mm")
+    ordering = ("orden", "espesor")
+
+
+@admin.register(ChapaGruesa)
+class ChapaGruesaAdmin(admin.ModelAdmin):
     list_display = ("espesor", "ancho_mm", "costo_usd_kg", "activo")
     list_filter = ("activo",)
     search_fields = ("espesor", "ancho_mm")

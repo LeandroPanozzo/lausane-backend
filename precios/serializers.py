@@ -2,7 +2,7 @@ from django.conf import settings
 from rest_framework import serializers
 
 from .models import (
-    Cliente, ChapaGalvanizada, ConfiguracionGlobal, CotizacionDolar, MarkupEspesorChapa, Tubo,
+    Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, CotizacionDolar, MarkupEspesorChapa, Tubo,
     Presupuesto, PresupuestoItem,
 )
 
@@ -20,6 +20,7 @@ class ConfiguracionGlobalSerializer(serializers.ModelSerializer):
         model = ConfiguracionGlobal
         fields = [
             "precio_base_dd", "precio_base_negra", "incremento_tubos", "incremento_galvanizada",
+            "incremento_gruesas",
             "email_remitente", "email_password", "email_password_configurada",
             "email_remitente_por_defecto", "email_configurado_por_defecto", "actualizado",
         ]
@@ -73,6 +74,16 @@ class MarkupEspesorChapaSerializer(serializers.ModelSerializer):
 class ChapaGalvanizadaSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChapaGalvanizada
+        fields = [
+            "id", "espesor", "ancho_mm", "costo_usd_kg", "activo", "usar_incremento_general",
+            "orden", "creado", "actualizado",
+        ]
+        read_only_fields = ["id", "creado", "actualizado"]
+
+
+class ChapaGruesaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChapaGruesa
         fields = [
             "id", "espesor", "ancho_mm", "costo_usd_kg", "activo", "usar_incremento_general",
             "orden", "creado", "actualizado",

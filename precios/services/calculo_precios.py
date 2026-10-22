@@ -15,7 +15,7 @@ Y en la hoja de cada cliente (ej. hoja "1"):
 from decimal import Decimal
 from typing import Optional
 
-from precios.models import Cliente, ChapaGalvanizada, ConfiguracionGlobal, MarkupEspesorChapa, Tubo
+from precios.models import Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, MarkupEspesorChapa, Tubo
 
 
 def coeficiente(incremento_pct: Decimal) -> Decimal:
@@ -168,3 +168,28 @@ def calcular_lista_precios_galvanizada(
 ) -> list:
     chapas = queryset if queryset is not None else ChapaGalvanizada.objects.filter(activo=True)
     return [calcular_precio_galvanizada(c, config, cotizacion) for c in chapas]
+
+
+def calcular_precio_gruesa(chapa: ChapaGruesa, config: ConfiguracionGlobal, cotizacion: Decimal) -> dict:
+    """Chapa gruesa: mismo esquema que galvanizada (costo propio en U$S/kg +
+    incremento_gruesas, en vez de un % sobre una base compartida)."""
+    incremento = config.incremento_gruesas if chapa.usar_incremento_general else Decimal("0")
+    precio_usd_kg = chapa.costo_usd_kg * (Decimal("1") + incremento)
+    precio_pesos_kg = precio_usd_kg * cotizacion
+    return {
+        "id": chapa.id,
+        "espesor": chapa.espesor,
+        "ancho_mm": chapa.ancho_mm,
+        "costo_usd_kg": chapa.costo_usd_kg,
+        "usar_incremento_general": chapa.usar_incremento_general,
+        "incremento_aplicado": incremento,
+        "precio_venta_usd_kg": precio_usd_kg.quantize(Decimal("0.00001")),
+        "precio_venta_pesos_kg": precio_pesos_kg.quantize(Decimal("0.01")),
+    }
+
+
+def calcular_lista_precios_gruesa(
+    config: ConfiguracionGlobal, cotizacion: Decimal, queryset: Optional[list] = None
+) -> list:
+    chapas = queryset if queryset is not None else ChapaGruesa.objects.filter(activo=True)
+    return [calcular_precio_gruesa(c, config, cotizacion) for c in chapas]

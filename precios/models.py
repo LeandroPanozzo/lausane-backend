@@ -50,6 +50,14 @@ class ConfiguracionGlobal(models.Model):
             "en vez de la oficial online, hasta que se vuelva a modo automático."
         ),
     )
+    incremento_gruesas = models.DecimalField(
+        max_digits=6, decimal_places=4, default=Decimal("0.20"),
+        help_text=(
+            "% de incremento general para chapa gruesa, como fracción (0.20 = 20%). "
+            "Mismo esquema que incremento_galvanizada: costo propio en U$S/kg por espesor/ancho "
+            "más este incremento único (en vez del % sobre precio base de DD/Negra)."
+        ),
+    )
     email_remitente = models.EmailField(
         blank=True, default="",
         help_text=(
@@ -230,6 +238,39 @@ class ChapaGalvanizada(models.Model):
 
     def __str__(self):
         return f"Galvanizada · espesor {self.espesor} · {self.ancho_mm}mm"
+
+
+class ChapaGruesa(models.Model):
+    """
+    Chapa gruesa, por espesor/ancho — mismo esquema que ChapaGalvanizada:
+    costo propio en U$S/kg por combinación de espesor/ancho, más el
+    incremento_gruesas global (en vez de un % sobre un precio base
+    compartido, como DD/Negra).
+    """
+
+    espesor = models.CharField(max_length=30, help_text="Código de espesor, ej: '16', '18', '12,14 y 20'")
+    ancho_mm = models.CharField(max_length=20, help_text="Ancho de la chapa en mm, ej: '1000', '1220'")
+    costo_usd_kg = models.DecimalField(max_digits=10, decimal_places=4, help_text="Costo de compra en U$S/kg")
+    activo = models.BooleanField(default=True, help_text="Si está inactivo, no aparece en la lista de precios del cliente")
+    usar_incremento_general = models.BooleanField(
+        default=True,
+        help_text=(
+            "Si está destildado, esta chapa se vende directo al costo (sin aplicar "
+            "incremento_gruesas) — para cuando un espesor/ancho puntual no debe llevar recargo."
+        ),
+    )
+    orden = models.PositiveIntegerField(default=0)
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("espesor", "ancho_mm")
+        ordering = ["orden", "espesor"]
+        verbose_name = "Chapa gruesa"
+        verbose_name_plural = "Chapas gruesas"
+
+    def __str__(self):
+        return f"Gruesa · espesor {self.espesor} · {self.ancho_mm}mm"
 
 
 class Tubo(models.Model):

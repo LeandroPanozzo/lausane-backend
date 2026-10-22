@@ -8,6 +8,7 @@ router.register(r"clientes", views.ClienteViewSet, basename="cliente")
 router.register(r"markups-chapa", views.MarkupEspesorChapaViewSet, basename="markup-chapa")
 router.register(r"tubos", views.TuboViewSet, basename="tubo")
 router.register(r"galvanizada", views.ChapaGalvanizadaViewSet, basename="galvanizada")
+router.register(r"gruesas", views.ChapaGruesaViewSet, basename="gruesa")
 router.register(r"presupuestos", views.PresupuestoViewSet, basename="presupuesto")
 
 urlpatterns = [
