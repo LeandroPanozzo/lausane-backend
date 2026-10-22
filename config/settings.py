@@ -9,9 +9,23 @@ Reemplaza la lógica del Excel LISTA_UNIFICADA:
 - Catálogo de tubos
 """
 
+import socket
 from pathlib import Path
 from datetime import timedelta
 from decouple import config, Csv
+
+# Algunos servidores (p. ej. el droplet de producción) resuelven hosts como
+# smtp.gmail.com a una dirección IPv6 sin tener ruta IPv6 real — la conexión
+# se cuelga hasta el timeout y después falla con "Network is unreachable".
+# Forzamos IPv4 en todas las resoluciones DNS del proceso para evitarlo.
+_getaddrinfo_original = socket.getaddrinfo
+
+
+def _getaddrinfo_solo_ipv4(host, port, family=0, type=0, proto=0, flags=0):
+    return _getaddrinfo_original(host, port, socket.AF_INET, type, proto, flags)
+
+
+socket.getaddrinfo = _getaddrinfo_solo_ipv4
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -162,6 +176,10 @@ EMAIL_USE_SSL = config('EMAIL_USE_SSL', default=True, cast=bool)
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='Lausane S.A.C. <presupuestos@lausane.com.ar>')
+
+# Si EMAIL_BACKEND = precios.services.sendgrid_backend.SendGridBackend (ver
+# ese archivo para el porqué), esta es la API key de SendGrid.
+SENDGRID_API_KEY = config('SENDGRID_API_KEY', default='')
 
 # URL pública del frontend, usada para armar el link que se manda por
 # WhatsApp/email cuando no se adjunta el PDF directamente.
