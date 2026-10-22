@@ -181,6 +181,43 @@ class ActivoMarkupChapaAPITests(APITestCase):
         self.assertFalse(resp.data["activo"])
 
 
+class FiltroTipoMarkupChapaAPITests(APITestCase):
+    """?tipo=DD/NEGRA tiene que devolver solo ese tipo — en algún momento dejó
+    de funcionar en silencio (DEFAULT_FILTER_BACKENDS no trae django-filter,
+    así que `filterset_fields` por sí solo no filtra nada) y la pestaña
+    "Laminado en Frío" terminaba mostrando también todas las filas de Negra."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(username="tester", password="Sup3rSecret!42")
+        self.client.post("/api/auth/token/", {"username": "tester", "password": "Sup3rSecret!42"}, format="json")
+        MarkupEspesorChapa.objects.create(
+            tipo=MarkupEspesorChapa.TIPO_DD, espesor="16", ancho_mm="1000", porcentaje=Decimal("0.07"),
+        )
+        MarkupEspesorChapa.objects.create(
+            tipo=MarkupEspesorChapa.TIPO_NEGRA, espesor="2", ancho_mm="1000", porcentaje=Decimal("0.14"),
+        )
+
+    def test_filtra_por_tipo_dd(self):
+        resp = self.client.get("/api/markups-chapa/", {"tipo": "DD"})
+        self.assertEqual(resp.status_code, 200)
+        resultados = resp.data["results"] if "results" in resp.data else resp.data
+        self.assertEqual(len(resultados), 1)
+        self.assertEqual(resultados[0]["tipo"], "DD")
+
+    def test_filtra_por_tipo_negra(self):
+        resp = self.client.get("/api/markups-chapa/", {"tipo": "NEGRA"})
+        self.assertEqual(resp.status_code, 200)
+        resultados = resp.data["results"] if "results" in resp.data else resp.data
+        self.assertEqual(len(resultados), 1)
+        self.assertEqual(resultados[0]["tipo"], "NEGRA")
+
+    def test_sin_filtro_devuelve_todo(self):
+        resp = self.client.get("/api/markups-chapa/")
+        resultados = resp.data["results"] if "results" in resp.data else resp.data
+        self.assertEqual(len(resultados), 2)
+
+
 class CalcularPrecioGalvanizadaTests(TestCase):
     """A diferencia de DD/Negra, cada espesor/ancho de galvanizada tiene su
     propio costo en U$S/kg — mismo esquema que Tubo (costo + incremento

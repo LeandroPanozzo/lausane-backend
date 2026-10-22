@@ -68,7 +68,15 @@ class MarkupEspesorChapaViewSet(viewsets.ModelViewSet):
     queryset = MarkupEspesorChapa.objects.all()
     serializer_class = MarkupEspesorChapaSerializer
     permission_classes = [permissions.IsAuthenticated]
-    filterset_fields = ["tipo"]
+
+    def get_queryset(self):
+        # DEFAULT_FILTER_BACKENDS solo trae SearchFilter (no django-filter), así
+        # que `filterset_fields` no sirve acá — filtramos "a mano" por ?tipo=.
+        qs = super().get_queryset()
+        tipo = self.request.query_params.get("tipo")
+        if tipo:
+            qs = qs.filter(tipo=tipo)
+        return qs
 
 
 class TuboViewSet(viewsets.ModelViewSet):
