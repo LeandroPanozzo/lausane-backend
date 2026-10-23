@@ -58,6 +58,7 @@ class ClienteSerializer(serializers.ModelSerializer):
         model = Cliente
         fields = [
             "id", "numero", "nombre", "email", "telefono", "incremento_dd", "incremento_negra",
+            "descuento_dd", "descuento_negra",
             "coeficiente_dd", "coeficiente_negra", "activo", "notas",
             "creado", "actualizado",
         ]

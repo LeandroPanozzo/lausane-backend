@@ -56,10 +56,18 @@ def calcular_lista_precios_chapa(cliente: Cliente, config: ConfiguracionGlobal, 
     Arma la lista de precios completa de un cliente para chapa DD y Negra,
     abierta por espesor/ancho — equivalente a la hoja individual del cliente
     en el Excel (ej. hoja "1").
+
+    Además del % de incremento (que define la BASE compartida), cada cliente
+    puede tener su propio % de descuento para DD y para Negra (Cliente.
+    descuento_dd / descuento_negra) — se aplica sobre el precio final de cada
+    espesor, no sobre la base, así "Base" sigue siendo la réplica fiel del
+    Excel y el descuento es un recorte aparte, propio de este cliente.
     """
     resultado = {}
     for tipo, _ in MarkupEspesorChapa.TIPO_CHOICES:
         base = calcular_precio_base_cliente(cliente, config, cotizacion, tipo)
+        descuento_pct = cliente.descuento_dd if tipo == MarkupEspesorChapa.TIPO_DD else cliente.descuento_negra
+        factor_descuento = Decimal("1") - (descuento_pct / Decimal("100"))
         precios_por_espesor = []
         markups = MarkupEspesorChapa.objects.filter(tipo=tipo, activo=True).order_by("orden", "espesor")
         for m in markups:
@@ -78,12 +86,13 @@ def calcular_lista_precios_chapa(cliente: Cliente, config: ConfiguracionGlobal, 
                 "espesor": m.espesor,
                 "ancho_mm": m.ancho_mm,
                 "porcentaje": m.porcentaje,
-                "precio_usd": (base["base_usd"] * factor).quantize(Decimal("0.0001")),
-                "precio_pesos": (base["base_pesos"] * factor).quantize(Decimal("0.01")),
+                "precio_usd": (base["base_usd"] * factor * factor_descuento).quantize(Decimal("0.0001")),
+                "precio_pesos": (base["base_pesos"] * factor * factor_descuento).quantize(Decimal("0.01")),
                 "disponible": True,
             })
         resultado[tipo] = {
             "base": {k: v.quantize(Decimal("0.00001")) for k, v in base.items()},
+            "descuento_pct": descuento_pct,
             "precios_por_espesor": precios_por_espesor,
         }
     return resultado

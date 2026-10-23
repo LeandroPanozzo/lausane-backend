@@ -113,6 +113,33 @@ class CalcularListaPreciosChapaTests(TestCase):
         self.assertNotIn("20", espesores)
         self.assertIn("16", espesores)
 
+    def test_sin_descuento_cargado_el_precio_no_cambia(self):
+        self.cliente.descuento_dd = Decimal("0")
+        self.cliente.save()
+        precios = calculo_precios.calcular_lista_precios_chapa(self.cliente, self.config, Decimal("1000"))
+        fila_16 = next(f for f in precios[MarkupEspesorChapa.TIPO_DD]["precios_por_espesor"] if f["espesor"] == "16")
+        # base_usd=1.404 (1.3 * 1.08) * factor 1.07 = 1.50228, quantizado a 4 decimales = 1.5023
+        self.assertEqual(fila_16["precio_usd"], Decimal("1.5023"))
+
+    def test_aplica_el_descuento_propio_del_cliente_sobre_el_precio_final(self):
+        self.cliente.descuento_dd = Decimal("10")
+        self.cliente.save()
+        precios = calculo_precios.calcular_lista_precios_chapa(self.cliente, self.config, Decimal("1000"))
+        fila_16 = next(f for f in precios[MarkupEspesorChapa.TIPO_DD]["precios_por_espesor"] if f["espesor"] == "16")
+        self.assertEqual(precios[MarkupEspesorChapa.TIPO_DD]["descuento_pct"], Decimal("10"))
+        # precio sin descuento (1.50228) * (1 - 10%) = 1.352052, quantizado a 4 decimales = 1.3521
+        self.assertEqual(fila_16["precio_usd"], Decimal("1.3521"))
+
+    def test_el_descuento_de_dd_no_afecta_a_negra(self):
+        MarkupEspesorChapa.objects.create(
+            tipo=MarkupEspesorChapa.TIPO_NEGRA, espesor="2", ancho_mm="1000", porcentaje=Decimal("0.14"), orden=1,
+        )
+        self.cliente.descuento_dd = Decimal("50")
+        self.cliente.descuento_negra = Decimal("0")
+        self.cliente.save()
+        precios = calculo_precios.calcular_lista_precios_chapa(self.cliente, self.config, Decimal("1000"))
+        self.assertEqual(precios[MarkupEspesorChapa.TIPO_NEGRA]["descuento_pct"], Decimal("0"))
+
 
 class DescuentoTuboAPITests(APITestCase):
     """El % de descuento y su checkbox se editan por tubo desde /api/tubos/{id}/
@@ -379,3 +406,37 @@ class ChapaGruesaAPITests(APITestCase):
         fila = next(c for c in resp.data["chapas"] if c["id"] == creada["id"])
         self.assertFalse(fila["usar_incremento_general"])
         self.assertEqual(Decimal(str(fila["precio_venta_usd_kg"])), Decimal("1.8").quantize(Decimal("0.00001")))
+
+
+class DescuentoClienteAPITests(APITestCase):
+    """El % de descuento propio de DD/Negra se edita por cliente desde
+    /api/clientes/{id}/ y se ve reflejado en /api/clientes/{id}/precios/."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(username="tester", password="Sup3rSecret!42")
+        self.client.post("/api/auth/token/", {"username": "tester", "password": "Sup3rSecret!42"}, format="json")
+        config = ConfiguracionGlobal.actual()
+        config.precio_base_dd = Decimal("1.3")
+        config.save()
+        self.cliente = Cliente.objects.create(
+            numero=1, nombre="Cliente Test", incremento_dd=Decimal("8"), incremento_negra=Decimal("5"),
+        )
+        MarkupEspesorChapa.objects.create(
+            tipo=MarkupEspesorChapa.TIPO_DD, espesor="16", ancho_mm="1000", porcentaje=Decimal("0.07"),
+        )
+
+    def test_cliente_nuevo_viene_sin_descuento_por_defecto(self):
+        resp = self.client.get(f"/api/clientes/{self.cliente.id}/")
+        self.assertEqual(Decimal(resp.data["descuento_dd"]), Decimal("0"))
+        self.assertEqual(Decimal(resp.data["descuento_negra"]), Decimal("0"))
+
+    def test_patch_carga_el_descuento_y_se_aplica_en_precios(self):
+        resp = self.client.patch(f"/api/clientes/{self.cliente.id}/", {"descuento_dd": "10"}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(Decimal(resp.data["descuento_dd"]), Decimal("10"))
+
+        resp = self.client.get(f"/api/clientes/{self.cliente.id}/precios/")
+        self.assertEqual(resp.status_code, 200)
+        fila = next(f for f in resp.data["precios"]["DD"]["precios_por_espesor"] if f["espesor"] == "16")
+        self.assertEqual(Decimal(str(fila["precio_usd"])), Decimal("1.3521"))

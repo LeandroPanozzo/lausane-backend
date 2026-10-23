@@ -146,6 +146,16 @@ class Cliente(models.Model):
         max_digits=6, decimal_places=3, validators=[MinValueValidator(Decimal("0"))],
         help_text="% de incremento sobre precio base Negra (ej: 5 = 5%)",
     )
+    descuento_dd = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("0"),
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="% de descuento propio de este cliente sobre el precio de Laminado en Frío (0 = sin descuento)",
+    )
+    descuento_negra = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("0"),
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="% de descuento propio de este cliente sobre el precio de chapa Negra (0 = sin descuento)",
+    )
     activo = models.BooleanField(default=True)
     notas = models.TextField(blank=True, default="")
     creado = models.DateTimeField(auto_now_add=True)
