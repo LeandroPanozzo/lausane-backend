@@ -136,6 +136,12 @@ def generar_pdf_presupuesto(presupuesto: Presupuesto) -> bytes:
         "Total", parent=styles["Heading2"], alignment=TA_RIGHT, textColor=ROJO_LAUSANE, fontSize=15,
     )
     elementos.append(Paragraph(f"Total: {_formato_pesos(presupuesto.total_pesos)}", total_style))
+
+    mas_impuestos_style = ParagraphStyle(
+        "MasImpuestos", parent=styles["Heading2"], alignment=TA_RIGHT, textColor=ROJO_LAUSANE,
+        fontSize=14, spaceBefore=2,
+    )
+    elementos.append(Paragraph("+ Impuestos", mas_impuestos_style))
     elementos.append(Spacer(1, 10 * mm))
 
     if presupuesto.notas:
