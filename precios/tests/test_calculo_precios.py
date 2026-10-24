@@ -440,3 +440,88 @@ class DescuentoClienteAPITests(APITestCase):
         self.assertEqual(resp.status_code, 200)
         fila = next(f for f in resp.data["precios"]["DD"]["precios_por_espesor"] if f["espesor"] == "16")
         self.assertEqual(Decimal(str(fila["precio_usd"])), Decimal("1.3521"))
+
+
+class CalcularPrecioGalvanizadaConDescuentoTests(TestCase):
+    """Mismo esquema que el descuento de DD/Negra, pero para galvanizada —
+    se le pasa el % de descuento propio del cliente (Cliente.
+    descuento_galvanizada) y se aplica sobre el precio final."""
+
+    def test_sin_descuento_el_precio_no_cambia(self):
+        config = ConfiguracionGlobal(incremento_galvanizada=Decimal("0.20"))
+        chapa = ChapaGalvanizada(espesor="16", ancho_mm="1000", costo_usd_kg=Decimal("1.5"))
+        resultado = calculo_precios.calcular_precio_galvanizada(chapa, config, cotizacion=Decimal("1000"))
+        self.assertEqual(resultado["descuento_pct"], Decimal("0"))
+        self.assertEqual(resultado["precio_venta_usd_kg"], (Decimal("1.5") * Decimal("1.20")).quantize(Decimal("0.00001")))
+
+    def test_aplica_el_descuento_sobre_el_precio_final(self):
+        config = ConfiguracionGlobal(incremento_galvanizada=Decimal("0.20"))
+        chapa = ChapaGalvanizada(espesor="16", ancho_mm="1000", costo_usd_kg=Decimal("1.5"))
+        resultado = calculo_precios.calcular_precio_galvanizada(
+            chapa, config, cotizacion=Decimal("1000"), descuento_pct=Decimal("10"),
+        )
+        # 1.5 * 1.20 * 0.90 = 1.62
+        self.assertEqual(resultado["precio_venta_usd_kg"], Decimal("1.62").quantize(Decimal("0.00001")))
+
+
+class DescuentoGalvanizadaAPITests(APITestCase):
+    """El % de descuento de galvanizada se edita por cliente y se aplica
+    solo cuando se pide la lista de precios con ?cliente_id=, no en el
+    catálogo global (la pantalla de administración de Chapas)."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(username="tester", password="Sup3rSecret!42")
+        self.client.post("/api/auth/token/", {"username": "tester", "password": "Sup3rSecret!42"}, format="json")
+        config = ConfiguracionGlobal.actual()
+        config.incremento_galvanizada = Decimal("0.20")
+        config.save()
+        self.cliente = Cliente.objects.create(
+            numero=1, nombre="Cliente Test", incremento_dd=Decimal("8"), incremento_negra=Decimal("5"),
+            descuento_galvanizada=Decimal("10"),
+        )
+        self.chapa = ChapaGalvanizada.objects.create(espesor="16", ancho_mm="1000", costo_usd_kg=Decimal("1.5"))
+
+    def test_catalogo_global_no_aplica_el_descuento(self):
+        resp = self.client.get("/api/galvanizada/lista-precios/")
+        fila = next(c for c in resp.data["chapas"] if c["id"] == self.chapa.id)
+        self.assertEqual(Decimal(str(fila["precio_venta_usd_kg"])), (Decimal("1.5") * Decimal("1.20")).quantize(Decimal("0.00001")))
+
+    def test_con_cliente_id_aplica_el_descuento_de_ese_cliente(self):
+        resp = self.client.get("/api/galvanizada/lista-precios/", {"cliente_id": self.cliente.id})
+        fila = next(c for c in resp.data["chapas"] if c["id"] == self.chapa.id)
+        self.assertEqual(Decimal(str(fila["precio_venta_usd_kg"])), Decimal("1.62").quantize(Decimal("0.00001")))
+
+
+class ClienteNumeroAutomaticoAPITests(APITestCase):
+    """Si no se manda 'numero' al crear un cliente, se asigna solo
+    (el siguiente libre) — no hace falta que el usuario lo piense."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(username="tester", password="Sup3rSecret!42")
+        self.client.post("/api/auth/token/", {"username": "tester", "password": "Sup3rSecret!42"}, format="json")
+
+    def test_sin_numero_se_asigna_el_siguiente_libre(self):
+        Cliente.objects.create(numero=5, nombre="Existente", incremento_dd=8, incremento_negra=5)
+        resp = self.client.post(
+            "/api/clientes/", {"nombre": "Nuevo", "incremento_dd": "8", "incremento_negra": "5"}, format="json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data["numero"], 6)
+
+    def test_con_numero_explicito_lo_respeta(self):
+        resp = self.client.post(
+            "/api/clientes/",
+            {"numero": "40", "nombre": "Nuevo", "incremento_dd": "8", "incremento_negra": "5"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data["numero"], 40)
+
+    def test_primer_cliente_sin_numero_empieza_en_1(self):
+        resp = self.client.post(
+            "/api/clientes/", {"nombre": "Primero", "incremento_dd": "8", "incremento_negra": "5"}, format="json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data["numero"], 1)

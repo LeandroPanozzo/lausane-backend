@@ -145,7 +145,10 @@ def calcular_lista_precios_tubos(config: ConfiguracionGlobal, cotizacion: Decima
     return [calcular_precio_tubo(t, config, cotizacion) for t in tubos]
 
 
-def calcular_precio_galvanizada(chapa: ChapaGalvanizada, config: ConfiguracionGlobal, cotizacion: Decimal) -> dict:
+def calcular_precio_galvanizada(
+    chapa: ChapaGalvanizada, config: ConfiguracionGlobal, cotizacion: Decimal,
+    descuento_pct: Decimal = Decimal("0"),
+) -> dict:
     """
     Chapa galvanizada: a diferencia de DD/Negra, cada espesor/ancho tiene su
     propio costo en U$S/kg (no un % sobre una base compartida) — mismo
@@ -156,9 +159,14 @@ def calcular_precio_galvanizada(chapa: ChapaGalvanizada, config: ConfiguracionGl
 
     Si `usar_incremento_general` está destildado para esta chapa puntual, no
     se le aplica el incremento — se vende directo al costo.
+
+    `descuento_pct` es el % de descuento propio de un cliente (Cliente.
+    descuento_galvanizada) — se aplica sobre el precio final, igual que el
+    descuento de DD/Negra (ver calcular_lista_precios_chapa). 0 = sin cambio.
     """
     incremento = config.incremento_galvanizada if chapa.usar_incremento_general else Decimal("0")
-    precio_usd_kg = chapa.costo_usd_kg * (Decimal("1") + incremento)
+    factor_descuento = Decimal("1") - (descuento_pct / Decimal("100"))
+    precio_usd_kg = chapa.costo_usd_kg * (Decimal("1") + incremento) * factor_descuento
     precio_pesos_kg = precio_usd_kg * cotizacion
     return {
         "id": chapa.id,
@@ -167,16 +175,18 @@ def calcular_precio_galvanizada(chapa: ChapaGalvanizada, config: ConfiguracionGl
         "costo_usd_kg": chapa.costo_usd_kg,
         "usar_incremento_general": chapa.usar_incremento_general,
         "incremento_aplicado": incremento,
+        "descuento_pct": descuento_pct,
         "precio_venta_usd_kg": precio_usd_kg.quantize(Decimal("0.00001")),
         "precio_venta_pesos_kg": precio_pesos_kg.quantize(Decimal("0.01")),
     }
 
 
 def calcular_lista_precios_galvanizada(
-    config: ConfiguracionGlobal, cotizacion: Decimal, queryset: Optional[list] = None
+    config: ConfiguracionGlobal, cotizacion: Decimal, queryset: Optional[list] = None,
+    descuento_pct: Decimal = Decimal("0"),
 ) -> list:
     chapas = queryset if queryset is not None else ChapaGalvanizada.objects.filter(activo=True)
-    return [calcular_precio_galvanizada(c, config, cotizacion) for c in chapas]
+    return [calcular_precio_galvanizada(c, config, cotizacion, descuento_pct) for c in chapas]
 
 
 def calcular_precio_gruesa(chapa: ChapaGruesa, config: ConfiguracionGlobal, cotizacion: Decimal) -> dict:

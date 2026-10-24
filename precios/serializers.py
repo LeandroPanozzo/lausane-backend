@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.db import models
 from rest_framework import serializers
 
 from .models import (
@@ -51,6 +52,9 @@ class CotizacionDolarSerializer(serializers.ModelSerializer):
 
 
 class ClienteSerializer(serializers.ModelSerializer):
+    # Opcional: si no se manda, se asigna solo (ver create()) — así no hace
+    # falta que el usuario piense un número libre cada vez que carga un cliente.
+    numero = serializers.IntegerField(required=False)
     coeficiente_dd = serializers.DecimalField(max_digits=8, decimal_places=5, read_only=True)
     coeficiente_negra = serializers.DecimalField(max_digits=8, decimal_places=5, read_only=True)
 
@@ -58,11 +62,17 @@ class ClienteSerializer(serializers.ModelSerializer):
         model = Cliente
         fields = [
             "id", "numero", "nombre", "email", "telefono", "incremento_dd", "incremento_negra",
-            "descuento_dd", "descuento_negra",
+            "descuento_dd", "descuento_negra", "descuento_galvanizada",
             "coeficiente_dd", "coeficiente_negra", "activo", "notas",
             "creado", "actualizado",
         ]
         read_only_fields = ["id", "creado", "actualizado"]
+
+    def create(self, validated_data):
+        if not validated_data.get("numero"):
+            ultimo = Cliente.objects.aggregate(models.Max("numero"))["numero__max"] or 0
+            validated_data["numero"] = ultimo + 1
+        return super().create(validated_data)
 
 
 class MarkupEspesorChapaSerializer(serializers.ModelSerializer):

@@ -156,6 +156,11 @@ class Cliente(models.Model):
         validators=[MinValueValidator(Decimal("0"))],
         help_text="% de descuento propio de este cliente sobre el precio de chapa Negra (0 = sin descuento)",
     )
+    descuento_galvanizada = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("0"),
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="% de descuento propio de este cliente sobre el precio de chapa galvanizada (0 = sin descuento)",
+    )
     activo = models.BooleanField(default=True)
     notas = models.TextField(blank=True, default="")
     creado = models.DateTimeField(auto_now_add=True)

@@ -140,7 +140,19 @@ class ChapaGalvanizadaViewSet(viewsets.ModelViewSet):
         except cotizacion_dolar.CotizacionDolarError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-        precios = calculo_precios.calcular_lista_precios_galvanizada(config, cotizacion.venta)
+        # Sin ?cliente_id= es el catálogo global (sin descuento), usado en la
+        # pantalla de administración de Chapas. Con ?cliente_id= se le aplica
+        # el % de descuento propio de ese cliente (Cliente.descuento_galvanizada),
+        # usado en la ficha del cliente al armar un presupuesto.
+        descuento_pct = Decimal("0")
+        cliente_id = request.query_params.get("cliente_id")
+        if cliente_id:
+            cliente = get_object_or_404(Cliente, pk=cliente_id)
+            descuento_pct = cliente.descuento_galvanizada
+
+        precios = calculo_precios.calcular_lista_precios_galvanizada(
+            config, cotizacion.venta, descuento_pct=descuento_pct,
+        )
         return Response({
             "cotizacion_dolar": CotizacionDolarSerializer(cotizacion).data,
             "incremento_galvanizada": config.incremento_galvanizada,
