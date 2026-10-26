@@ -146,9 +146,11 @@ class PresupuestoSerializer(serializers.ModelSerializer):
         model = Presupuesto
         fields = [
             "id", "numero", "codigo", "cliente", "cliente_detalle", "cotizacion_dolar",
-            "estado", "notas", "token_publico", "total_pesos", "items", "creado", "actualizado",
+            "estado", "impuesto_pct", "notas", "token_publico", "total_pesos", "items", "creado", "actualizado",
         ]
-        read_only_fields = ["id", "numero", "codigo", "estado", "token_publico", "creado", "actualizado"]
+        read_only_fields = [
+            "id", "numero", "codigo", "estado", "impuesto_pct", "token_publico", "creado", "actualizado",
+        ]
 
     def validate_items(self, items):
         if not items:
@@ -183,6 +185,10 @@ class PresupuestoListSerializer(serializers.ModelSerializer):
 class EnviarEmailSerializer(serializers.Serializer):
     destinatario = serializers.EmailField()
     mensaje = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class ElegirImpuestoSerializer(serializers.Serializer):
+    impuesto_pct = serializers.ChoiceField(choices=Presupuesto.IMPUESTO_CHOICES)
 
 
 class SolicitarResetPasswordSerializer(serializers.Serializer):

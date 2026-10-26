@@ -60,7 +60,9 @@ class WhatsAppEndpointsAPITests(APITestCase):
             numero=9001, nombre="Cliente WSP", telefono="5491137860195",
             incremento_dd=Decimal("0"), incremento_negra=Decimal("0"),
         )
-        self.presupuesto = Presupuesto.objects.create(cliente=self.cliente, cotizacion_dolar=Decimal("1000"))
+        self.presupuesto = Presupuesto.objects.create(
+            cliente=self.cliente, cotizacion_dolar=Decimal("1000"), impuesto_pct=Decimal("21"),
+        )
         PresupuestoItem.objects.create(
             presupuesto=self.presupuesto,
             tipo=PresupuestoItem.TIPO_OTRO,

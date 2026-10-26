@@ -17,6 +17,7 @@ from .serializers import (
     ConfiguracionGlobalSerializer,
     ContactoPublicoSerializer,
     CotizacionDolarSerializer,
+    ElegirImpuestoSerializer,
     EnviarEmailSerializer,
     MarkupEspesorChapaSerializer,
     PresupuestoListSerializer,
@@ -294,9 +295,35 @@ class PresupuestoViewSet(viewsets.ModelViewSet):
             return PresupuestoListSerializer
         return PresupuestoSerializer
 
+    @staticmethod
+    def _falta_elegir_impuesto(presupuesto):
+        """
+        Devuelve una Response 400 si todavía no se eligió el % de impuestos
+        para este presupuesto (hace falta antes de ver/descargar/mandar el
+        PDF por cualquier vía), o None si ya está elegido.
+        """
+        if presupuesto.impuesto_pct is None:
+            return Response(
+                {"detail": "Elegí primero el % de impuestos (10,5% o 21%) para este presupuesto."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return None
+
+    @action(detail=True, methods=["post"], url_path="elegir-impuesto")
+    def elegir_impuesto(self, request, pk=None):
+        presupuesto = self.get_object()
+        serializer = ElegirImpuestoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        presupuesto.impuesto_pct = serializer.validated_data["impuesto_pct"]
+        presupuesto.save(update_fields=["impuesto_pct"])
+        return Response(PresupuestoSerializer(presupuesto).data)
+
     @action(detail=True, methods=["get"], url_path="pdf")
     def pdf(self, request, pk=None):
         presupuesto = self.get_object()
+        error = self._falta_elegir_impuesto(presupuesto)
+        if error:
+            return error
         pdf_bytes = generar_pdf_presupuesto(presupuesto)
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'inline; filename="presupuesto_lausane_{presupuesto.numero}.pdf"'
@@ -315,6 +342,9 @@ class PresupuestoViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="enviar-email")
     def enviar_email(self, request, pk=None):
         presupuesto = self.get_object()
+        error = self._falta_elegir_impuesto(presupuesto)
+        if error:
+            return error
         serializer = EnviarEmailSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -345,6 +375,9 @@ class PresupuestoViewSet(viewsets.ModelViewSet):
     def enviar_whatsapp(self, request, pk=None):
         """Manda el PDF por WhatsApp automáticamente, vía el servicio interno (Baileys)."""
         presupuesto = self.get_object()
+        error = self._falta_elegir_impuesto(presupuesto)
+        if error:
+            return error
         telefono = (presupuesto.cliente.telefono or "").strip()
         if not telefono:
             return Response(

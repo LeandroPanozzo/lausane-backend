@@ -345,11 +345,19 @@ class Presupuesto(models.Model):
     ESTADO_ENVIADO = "enviado"
     ESTADO_CHOICES = [(ESTADO_BORRADOR, "Borrador"), (ESTADO_ENVIADO, "Enviado")]
 
+    IMPUESTO_10_5 = Decimal("10.5")
+    IMPUESTO_21 = Decimal("21")
+    IMPUESTO_CHOICES = [(IMPUESTO_10_5, "10,5%"), (IMPUESTO_21, "21%")]
+
     numero = models.PositiveIntegerField(unique=True, editable=False)
     cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, related_name="presupuestos")
     cotizacion_dolar = models.DecimalField(
         max_digits=10, decimal_places=2,
         help_text="Cotización del dólar usada al armar el presupuesto (congelada)",
+    )
+    impuesto_pct = models.DecimalField(
+        max_digits=4, decimal_places=1, choices=IMPUESTO_CHOICES, null=True, blank=True,
+        help_text="10,5 o 21 — se tiene que elegir antes de ver/descargar/mandar el PDF",
     )
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=ESTADO_BORRADOR)
     notas = models.TextField(blank=True, default="")

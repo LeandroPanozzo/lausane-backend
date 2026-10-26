@@ -35,6 +35,14 @@ def _formato_pesos(valor: Decimal) -> str:
     return f"$ {texto}"
 
 
+def _formato_porcentaje(valor: Decimal) -> str:
+    """10.5 -> '10,5%' ; 21 -> '21%' (sin ',0' de más)."""
+    texto = f"{valor.normalize():f}"
+    if "." in texto:
+        texto = texto.rstrip("0").rstrip(".")
+    return f"{texto.replace('.', ',')}%"
+
+
 def _formato_cantidad(valor: Decimal) -> str:
     """Evita que '500' se muestre como '500.000' por el decimal_places del campo."""
     texto = f"{valor:f}"
@@ -141,7 +149,11 @@ def generar_pdf_presupuesto(presupuesto: Presupuesto) -> bytes:
         "MasImpuestos", parent=styles["Heading2"], alignment=TA_RIGHT, textColor=ROJO_LAUSANE,
         fontSize=14, spaceBefore=2,
     )
-    elementos.append(Paragraph("+ Impuestos", mas_impuestos_style))
+    if presupuesto.impuesto_pct is not None:
+        texto_impuestos = f"+{_formato_porcentaje(presupuesto.impuesto_pct)} de Impuestos"
+    else:
+        texto_impuestos = "+ Impuestos"
+    elementos.append(Paragraph(texto_impuestos, mas_impuestos_style))
     elementos.append(Spacer(1, 10 * mm))
 
     if presupuesto.notas:
