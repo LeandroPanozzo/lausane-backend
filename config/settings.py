@@ -185,6 +185,12 @@ SENDGRID_API_KEY = config('SENDGRID_API_KEY', default='')
 # WhatsApp/email cuando no se adjunta el PDF directamente.
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
 
+# Servicio interno (Node + Baileys) que mantiene la sesión de WhatsApp
+# vinculada y manda los presupuestos con el PDF adjunto. Corre en la misma
+# máquina, nginx no lo expone a internet.
+WHATSAPP_SERVICE_URL = config('WHATSAPP_SERVICE_URL', default='http://127.0.0.1:8002')
+WHATSAPP_SERVICE_TOKEN = config('WHATSAPP_SERVICE_TOKEN', default='')
+
 # Casilla que recibe los mensajes del formulario de contacto del sitio público.
 CONTACTO_EMAIL_DESTINO = config('CONTACTO_EMAIL_DESTINO', default='lausaneventas@lausane.com.ar')
 

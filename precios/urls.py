@@ -25,4 +25,6 @@ urlpatterns = [
     path("dolar/actual/", views.CotizacionDolarView.as_view(), name="dolar-actual"),
     path("dolar/manual/", views.CotizacionDolarManualView.as_view(), name="dolar-manual"),
     path("dolar/volver-oficial/", views.CotizacionDolarVolverOficialView.as_view(), name="dolar-volver-oficial"),
+    path("whatsapp/estado/", views.WhatsAppEstadoView.as_view(), name="whatsapp-estado"),
+    path("whatsapp/qr/", views.WhatsAppQrView.as_view(), name="whatsapp-qr"),
 ]

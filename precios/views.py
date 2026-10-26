@@ -23,10 +23,11 @@ from .serializers import (
     PresupuestoSerializer,
     TuboSerializer,
 )
-from .services import calculo_precios, cotizacion_dolar
-from .services.pdf_presupuesto import generar_pdf_presupuesto
+from .services import calculo_precios, cotizacion_dolar, whatsapp_service
+from .services.pdf_presupuesto import generar_pdf_presupuesto, _formato_pesos
 from .services.excel_presupuesto import generar_excel_presupuesto
 from .services.email_presupuesto import enviar_presupuesto_por_email
+from .services.whatsapp_service import WhatsAppServiceError
 
 
 class ClienteViewSet(viewsets.ModelViewSet):
@@ -339,6 +340,60 @@ class PresupuestoViewSet(viewsets.ModelViewSet):
         presupuesto.estado = Presupuesto.ESTADO_ENVIADO
         presupuesto.save(update_fields=["estado"])
         return Response(PresupuestoSerializer(presupuesto).data)
+
+    @action(detail=True, methods=["post"], url_path="enviar-whatsapp")
+    def enviar_whatsapp(self, request, pk=None):
+        """Manda el PDF por WhatsApp automáticamente, vía el servicio interno (Baileys)."""
+        presupuesto = self.get_object()
+        telefono = (presupuesto.cliente.telefono or "").strip()
+        if not telefono:
+            return Response(
+                {"detail": "Este cliente no tiene un teléfono cargado."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        texto = (
+            f"Hola {presupuesto.cliente.nombre}, te compartimos el Presupuesto Lausane "
+            f"N° {presupuesto.codigo} por un total de {_formato_pesos(presupuesto.total_pesos)}."
+        )
+        pdf_bytes = generar_pdf_presupuesto(presupuesto)
+        nombre_archivo = f"presupuesto_lausane_{presupuesto.numero}.pdf"
+
+        try:
+            whatsapp_service.enviar_documento(telefono, texto, pdf_bytes, nombre_archivo)
+        except WhatsAppServiceError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        presupuesto.estado = Presupuesto.ESTADO_ENVIADO
+        presupuesto.save(update_fields=["estado"])
+        return Response(PresupuestoSerializer(presupuesto).data)
+
+
+class WhatsAppEstadoView(APIView):
+    """GET /api/whatsapp/estado/ — estado de la sesión del servicio de WhatsApp."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            estado = whatsapp_service.obtener_estado()
+        except WhatsAppServiceError as exc:
+            return Response({"estado": "no_disponible", "detalle": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response(estado)
+
+
+class WhatsAppQrView(APIView):
+    """GET /api/whatsapp/qr/ — PNG del QR vigente para vincular el teléfono (404 si no hace falta)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            png = whatsapp_service.obtener_qr_png()
+        except WhatsAppServiceError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        if png is None:
+            return Response({"detail": "No hay un QR pendiente."}, status=status.HTTP_404_NOT_FOUND)
+        return HttpResponse(png, content_type="image/png")
 
 
 class ContactoPublicoView(APIView):
