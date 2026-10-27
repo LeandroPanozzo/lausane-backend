@@ -4,6 +4,7 @@ Genera el PDF de un presupuesto, con la identidad visual de Lausane S.A.C.
 el envío por email.
 """
 
+import re
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
@@ -41,6 +42,15 @@ def _formato_porcentaje(valor: Decimal) -> str:
     if "." in texto:
         texto = texto.rstrip("0").rstrip(".")
     return f"{texto.replace('.', ',')}%"
+
+
+_RE_SUFIJO_DESCUENTO = re.compile(r"\s*\(desc\.?\s*[\d.,]+\s*%\)\s*$", re.IGNORECASE)
+
+
+def _sin_sufijo_descuento(descripcion: str) -> str:
+    """El cliente no tiene por qué ver el % de descuento interno: el PDF
+    solo muestra el precio ya con el descuento aplicado."""
+    return _RE_SUFIJO_DESCUENTO.sub("", descripcion)
 
 
 def _formato_cantidad(valor: Decimal) -> str:
@@ -118,7 +128,7 @@ def generar_pdf_presupuesto(presupuesto: Presupuesto) -> bytes:
     filas = [encabezados]
     for item in presupuesto.items.all():
         filas.append([
-            Paragraph(item.descripcion, styles["Normal"]),
+            Paragraph(_sin_sufijo_descuento(item.descripcion), styles["Normal"]),
             _formato_cantidad(item.cantidad),
             item.unidad,
             _formato_pesos(item.precio_unitario_pesos),
@@ -182,7 +192,7 @@ def generar_pdf_presupuesto(presupuesto: Presupuesto) -> bytes:
     elementos.append(Spacer(1, 3 * mm))
     pie_style = ParagraphStyle("Pie", parent=styles["Normal"], fontSize=8.5, textColor=colors.HexColor("#888888"), alignment=TA_CENTER)
     elementos.append(Paragraph(
-        "Presupuesto válido por 7 días. Precios sujetos a variación de la cotización del dólar. — LAUSANE S.A.C.",
+        "Presupuesto válido por 24 horas. Precios sujetos a variación de la cotización del dólar. — LAUSANE S.A.C.",
         pie_style,
     ))
 

@@ -1,5 +1,6 @@
 """Genera el Excel de un presupuesto (misma info que el PDF, formato .xlsx)."""
 
+import re
 from io import BytesIO
 
 from django.utils import timezone
@@ -11,6 +12,14 @@ from precios.models import Presupuesto
 
 ROJO = "E30613"
 GRIS_CLARO = "F4F4F5"
+
+_RE_SUFIJO_DESCUENTO = re.compile(r"\s*\(desc\.?\s*[\d.,]+\s*%\)\s*$", re.IGNORECASE)
+
+
+def _sin_sufijo_descuento(descripcion: str) -> str:
+    """El cliente no tiene por qué ver el % de descuento interno: el Excel
+    solo muestra el precio ya con el descuento aplicado."""
+    return _RE_SUFIJO_DESCUENTO.sub("", descripcion)
 
 
 def generar_excel_presupuesto(presupuesto: Presupuesto) -> bytes:
@@ -48,7 +57,7 @@ def generar_excel_presupuesto(presupuesto: Presupuesto) -> bytes:
 
     fila = fila_header + 1
     for i, item in enumerate(presupuesto.items.all()):
-        ws.cell(row=fila, column=1, value=item.descripcion)
+        ws.cell(row=fila, column=1, value=_sin_sufijo_descuento(item.descripcion))
         ws.cell(row=fila, column=2, value=float(item.cantidad)).alignment = Alignment(horizontal="right")
         ws.cell(row=fila, column=2).number_format = "0.###"
         ws.cell(row=fila, column=3, value=item.unidad).alignment = Alignment(horizontal="center")
