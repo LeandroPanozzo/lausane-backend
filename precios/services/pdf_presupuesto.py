@@ -152,13 +152,14 @@ def generar_pdf_presupuesto(presupuesto: Presupuesto) -> bytes:
     if presupuesto.impuesto_pct is not None:
         monto_impuestos = (neto * presupuesto.impuesto_pct / Decimal("100")).quantize(Decimal("0.01"))
         elementos.append(Paragraph(f"Neto: {_formato_pesos(neto)}", total_style))
-        elementos.append(Paragraph(f"Total: {_formato_pesos(neto + monto_impuestos)}", total_style))
         elementos.append(
             Paragraph(
                 f"{_formato_porcentaje(presupuesto.impuesto_pct)} de IVA: {_formato_pesos(monto_impuestos)}",
                 mas_impuestos_style,
             )
         )
+        elementos.append(Paragraph(f"Total: {_formato_pesos(neto + monto_impuestos)}", total_style))
+        elementos.append(Paragraph("+Impuestos varios", mas_impuestos_style))
     else:
         elementos.append(Paragraph(f"Total: {_formato_pesos(neto)}", total_style))
     elementos.append(Spacer(1, 10 * mm))
