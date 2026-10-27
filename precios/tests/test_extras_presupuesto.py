@@ -22,17 +22,24 @@ class ExtrasModeloTests(APITestCase):
     def test_subtotal_sin_extras(self):
         self.assertEqual(self.item.subtotal_pesos, Decimal("2000.00"))
 
-    def test_subtotal_con_un_extra(self):
+    def test_subtotal_no_incluye_los_extras(self):
+        """El Subtotal del ítem es solo cantidad x precio unitario — los
+        extras se muestran aparte, no inflan esta columna."""
         PresupuestoItemExtra.objects.create(item=self.item, descripcion="Flete", precio_pesos=Decimal("500"))
-        self.assertEqual(self.item.subtotal_pesos, Decimal("2500.00"))
+        self.assertEqual(self.item.subtotal_pesos, Decimal("2000.00"))
 
-    def test_subtotal_con_varios_extras(self):
+    def test_total_con_extras_de_un_extra(self):
+        PresupuestoItemExtra.objects.create(item=self.item, descripcion="Flete", precio_pesos=Decimal("500"))
+        self.assertEqual(self.item.total_con_extras_pesos, Decimal("2500.00"))
+
+    def test_total_con_extras_de_varios_extras(self):
         PresupuestoItemExtra.objects.create(item=self.item, descripcion="Flete", precio_pesos=Decimal("500"))
         PresupuestoItemExtra.objects.create(item=self.item, descripcion="Corte especial", precio_pesos=Decimal("300"))
-        self.assertEqual(self.item.subtotal_pesos, Decimal("2800.00"))
+        self.assertEqual(self.item.total_con_extras_pesos, Decimal("2800.00"))
 
-    def test_total_presupuesto_incluye_extras(self):
+    def test_total_presupuesto_incluye_extras_aunque_el_subtotal_no(self):
         PresupuestoItemExtra.objects.create(item=self.item, descripcion="Flete", precio_pesos=Decimal("500"))
+        self.assertEqual(self.item.subtotal_pesos, Decimal("2000.00"))
         self.assertEqual(self.presupuesto.total_pesos, Decimal("2500.00"))
 
 
@@ -58,7 +65,8 @@ class ExtrasAPITests(APITestCase):
         self.assertEqual(resp.status_code, 200)
         self.item.refresh_from_db()
         self.assertEqual(self.item.extras.count(), 1)
-        self.assertEqual(self.item.subtotal_pesos, Decimal("2800.00"))
+        self.assertEqual(self.item.subtotal_pesos, Decimal("2000.00"))
+        self.assertEqual(self.item.total_con_extras_pesos, Decimal("2800.00"))
         extra_devuelto = resp.data["items"][0]["extras"][0]
         self.assertEqual(extra_devuelto["descripcion"], "Flete especial")
 

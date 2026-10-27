@@ -384,7 +384,7 @@ class Presupuesto(models.Model):
 
     @property
     def total_pesos(self) -> Decimal:
-        return sum((item.subtotal_pesos for item in self.items.all()), Decimal("0"))
+        return sum((item.total_con_extras_pesos for item in self.items.all()), Decimal("0"))
 
     @property
     def codigo(self) -> str:
@@ -413,9 +413,17 @@ class PresupuestoItem(models.Model):
 
     @property
     def subtotal_pesos(self) -> Decimal:
-        base = self.cantidad * self.precio_unitario_pesos
-        extras = sum((e.precio_pesos for e in self.extras.all()), Decimal("0"))
-        return (base + extras).quantize(Decimal("0.01"))
+        """Cantidad x precio unitario, SIN los extras (eso se muestra aparte)."""
+        return (self.cantidad * self.precio_unitario_pesos).quantize(Decimal("0.01"))
+
+    @property
+    def total_extras_pesos(self) -> Decimal:
+        return sum((e.precio_pesos for e in self.extras.all()), Decimal("0"))
+
+    @property
+    def total_con_extras_pesos(self) -> Decimal:
+        """Lo que este ítem aporta de verdad al total del presupuesto (subtotal + extras)."""
+        return (self.subtotal_pesos + self.total_extras_pesos).quantize(Decimal("0.01"))
 
     def __str__(self):
         return f"{self.descripcion} x{self.cantidad}"
