@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 
 from precios.models import Cliente, Presupuesto, PresupuestoItem
-from precios.services.pdf_presupuesto import generar_pdf_presupuesto, _formato_porcentaje
+from precios.services.pdf_presupuesto import generar_pdf_presupuesto
 
 
 class ImpuestoPresupuestoAPITests(APITestCase):
@@ -66,18 +66,6 @@ class ImpuestoPresupuestoAPITests(APITestCase):
         resp = self.client.get(f"/api/presupuestos/{self.presupuesto.id}/pdf/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp["Content-Type"], "application/pdf")
-
-
-class FormatoPorcentajeTests(APITestCase):
-    def test_10_5(self):
-        self.assertEqual(_formato_porcentaje(Decimal("10.5")), "10,5%")
-
-    def test_21(self):
-        self.assertEqual(_formato_porcentaje(Decimal("21")), "21%")
-
-    def test_21_con_escala_de_decimal_places_del_campo(self):
-        # Así llega desde la DB (DecimalField con decimal_places=1).
-        self.assertEqual(_formato_porcentaje(Decimal("21.0")), "21%")
 
 
 class PdfTextoImpuestoTests(APITestCase):

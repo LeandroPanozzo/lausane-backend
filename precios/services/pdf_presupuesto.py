@@ -35,14 +35,6 @@ def _formato_pesos(valor: Decimal) -> str:
     return f"$ {texto}"
 
 
-def _formato_porcentaje(valor: Decimal) -> str:
-    """10.5 -> '10,5%' ; 21 -> '21%' (sin ',0' de más)."""
-    texto = f"{valor.normalize():f}"
-    if "." in texto:
-        texto = texto.rstrip("0").rstrip(".")
-    return f"{texto.replace('.', ',')}%"
-
-
 def _formato_cantidad(valor: Decimal) -> str:
     """Evita que '500' se muestre como '500.000' por el decimal_places del campo."""
     texto = f"{valor:f}"
@@ -139,21 +131,23 @@ def generar_pdf_presupuesto(presupuesto: Presupuesto) -> bytes:
     elementos.append(tabla)
     elementos.append(Spacer(1, 6 * mm))
 
-    # --- Total ---
+    # --- Neto / Impuestos / Total ---
     total_style = ParagraphStyle(
         "Total", parent=styles["Heading2"], alignment=TA_RIGHT, textColor=ROJO_LAUSANE, fontSize=15,
     )
-    elementos.append(Paragraph(f"Total: {_formato_pesos(presupuesto.total_pesos)}", total_style))
-
     mas_impuestos_style = ParagraphStyle(
         "MasImpuestos", parent=styles["Heading2"], alignment=TA_RIGHT, textColor=ROJO_LAUSANE,
         fontSize=14, spaceBefore=2,
     )
+
+    neto = presupuesto.total_pesos
     if presupuesto.impuesto_pct is not None:
-        texto_impuestos = f"+{_formato_porcentaje(presupuesto.impuesto_pct)} de Impuestos"
+        monto_impuestos = (neto * presupuesto.impuesto_pct / Decimal("100")).quantize(Decimal("0.01"))
+        elementos.append(Paragraph(f"Neto: {_formato_pesos(neto)}", total_style))
+        elementos.append(Paragraph(f"+ Impuestos varios: {_formato_pesos(monto_impuestos)}", mas_impuestos_style))
+        elementos.append(Paragraph(f"Total: {_formato_pesos(neto + monto_impuestos)}", total_style))
     else:
-        texto_impuestos = "+ Impuestos"
-    elementos.append(Paragraph(texto_impuestos, mas_impuestos_style))
+        elementos.append(Paragraph(f"Total: {_formato_pesos(neto)}", total_style))
     elementos.append(Spacer(1, 10 * mm))
 
     if presupuesto.notas:
