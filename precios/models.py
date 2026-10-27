@@ -413,8 +413,25 @@ class PresupuestoItem(models.Model):
 
     @property
     def subtotal_pesos(self) -> Decimal:
-        return (self.cantidad * self.precio_unitario_pesos).quantize(Decimal("0.01"))
+        base = self.cantidad * self.precio_unitario_pesos
+        extras = sum((e.precio_pesos for e in self.extras.all()), Decimal("0"))
+        return (base + extras).quantize(Decimal("0.01"))
 
     def __str__(self):
         return f"{self.descripcion} x{self.cantidad}"
+
+
+class PresupuestoItemExtra(models.Model):
+    """Un agregado manual sobre un ítem ya creado (ej: flete, corte especial)."""
+
+    item = models.ForeignKey(PresupuestoItem, on_delete=models.CASCADE, related_name="extras")
+    descripcion = models.CharField(max_length=200)
+    precio_pesos = models.DecimalField(max_digits=14, decimal_places=2)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["creado", "id"]
+
+    def __str__(self):
+        return f"{self.descripcion} (+${self.precio_pesos})"
 

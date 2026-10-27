@@ -58,6 +58,11 @@ def generar_excel_presupuesto(presupuesto: Presupuesto) -> bytes:
             for col in range(1, 6):
                 ws.cell(row=fila, column=col).fill = PatternFill("solid", fgColor=GRIS_CLARO)
         fila += 1
+        for extra in item.extras.all():
+            celda_desc = ws.cell(row=fila, column=1, value=f"   + {extra.descripcion}")
+            celda_desc.font = Font(italic=True, size=9, color="666666")
+            ws.cell(row=fila, column=5, value=float(extra.precio_pesos)).number_format = "#,##0.00"
+            fila += 1
 
     fila += 1
     ws.cell(row=fila, column=4, value="TOTAL").font = Font(bold=True)

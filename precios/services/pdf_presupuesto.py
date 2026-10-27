@@ -110,6 +110,10 @@ def generar_pdf_presupuesto(presupuesto: Presupuesto) -> bytes:
     elementos.append(Spacer(1, 8 * mm))
 
     # --- Tabla de ítems ---
+    extra_style = ParagraphStyle(
+        "ExtraItem", parent=styles["Normal"], fontSize=8.5, textColor=colors.HexColor("#666666"),
+        leftIndent=10, fontName="Helvetica-Oblique",
+    )
     encabezados = ["Descripción", "Cantidad", "Unidad", "Precio unit.", "Subtotal"]
     filas = [encabezados]
     for item in presupuesto.items.all():
@@ -120,6 +124,12 @@ def generar_pdf_presupuesto(presupuesto: Presupuesto) -> bytes:
             _formato_pesos(item.precio_unitario_pesos),
             _formato_pesos(item.subtotal_pesos),
         ])
+        for extra in item.extras.all():
+            filas.append([
+                Paragraph(f"+ {extra.descripcion}", extra_style),
+                "", "", "",
+                _formato_pesos(extra.precio_pesos),
+            ])
 
     tabla = Table(filas, colWidths=[80 * mm, 22 * mm, 22 * mm, 30 * mm, 30 * mm], repeatRows=1)
     tabla.setStyle(TableStyle([

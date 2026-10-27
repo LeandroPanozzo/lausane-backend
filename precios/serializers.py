@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from .models import (
     Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, CotizacionDolar, MarkupEspesorChapa, Tubo,
-    Presupuesto, PresupuestoItem,
+    Presupuesto, PresupuestoItem, PresupuestoItemExtra,
 )
 
 
@@ -121,12 +121,23 @@ class ClienteResumenSerializer(serializers.ModelSerializer):
         fields = ["id", "numero", "nombre", "email", "telefono"]
 
 
+class PresupuestoItemExtraSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PresupuestoItemExtra
+        fields = ["id", "descripcion", "precio_pesos", "creado"]
+        read_only_fields = ["id", "creado"]
+
+
 class PresupuestoItemSerializer(serializers.ModelSerializer):
     subtotal_pesos = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+    extras = PresupuestoItemExtraSerializer(many=True, read_only=True)
 
     class Meta:
         model = PresupuestoItem
-        fields = ["id", "tipo", "descripcion", "cantidad", "unidad", "precio_unitario_pesos", "subtotal_pesos", "orden"]
+        fields = [
+            "id", "tipo", "descripcion", "cantidad", "unidad", "precio_unitario_pesos", "subtotal_pesos",
+            "extras", "orden",
+        ]
         read_only_fields = ["id"]
 
 

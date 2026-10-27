@@ -9,7 +9,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, MarkupEspesorChapa, Tubo, Presupuesto
+from .models import (
+    Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, MarkupEspesorChapa, Tubo, Presupuesto,
+    PresupuestoItem, PresupuestoItemExtra,
+)
 from .serializers import (
     ChapaGalvanizadaSerializer,
     ChapaGruesaSerializer,
@@ -20,6 +23,7 @@ from .serializers import (
     ElegirImpuestoSerializer,
     EnviarEmailSerializer,
     MarkupEspesorChapaSerializer,
+    PresupuestoItemExtraSerializer,
     PresupuestoListSerializer,
     PresupuestoSerializer,
     TuboSerializer,
@@ -308,6 +312,24 @@ class PresupuestoViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return None
+
+    @action(detail=True, methods=["post"], url_path=r"items/(?P<item_pk>\d+)/agregar-extra")
+    def agregar_extra(self, request, pk=None, item_pk=None):
+        presupuesto = self.get_object()
+        item = get_object_or_404(PresupuestoItem, pk=item_pk, presupuesto=presupuesto)
+        serializer = PresupuestoItemExtraSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        PresupuestoItemExtra.objects.create(item=item, **serializer.validated_data)
+        return Response(PresupuestoSerializer(presupuesto).data)
+
+    @action(detail=True, methods=["delete"], url_path=r"items/(?P<item_pk>\d+)/extras/(?P<extra_pk>\d+)")
+    def quitar_extra(self, request, pk=None, item_pk=None, extra_pk=None):
+        presupuesto = self.get_object()
+        extra = get_object_or_404(
+            PresupuestoItemExtra, pk=extra_pk, item_id=item_pk, item__presupuesto=presupuesto
+        )
+        extra.delete()
+        return Response(PresupuestoSerializer(presupuesto).data)
 
     @action(detail=True, methods=["post"], url_path="elegir-impuesto")
     def elegir_impuesto(self, request, pk=None):
