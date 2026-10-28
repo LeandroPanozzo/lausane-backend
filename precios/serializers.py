@@ -6,6 +6,7 @@ from .models import (
     Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, CotizacionDolar, MarkupEspesorChapa, Tubo,
     Presupuesto, PresupuestoItem, PresupuestoItemExtra, PresupuestoItemAjusteUnitario,
 )
+from .services.texto_presupuesto import limpiar_descripcion_item
 
 
 class ConfiguracionGlobalSerializer(serializers.ModelSerializer):
@@ -142,6 +143,14 @@ class PresupuestoItemSerializer(serializers.ModelSerializer):
     precio_unitario_efectivo_pesos = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
     extras = PresupuestoItemExtraSerializer(many=True, read_only=True)
     ajustes_unitarios = PresupuestoItemAjusteUnitarioSerializer(many=True, read_only=True)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Limpia la descripción para mostrarla (saca el % de descuento interno
+        # de los tubos, renombra "Chapa DD"/"Chapa Negra" viejo) sin tocar lo
+        # que está guardado — así se ve igual en la API, el PDF y el Excel.
+        data["descripcion"] = limpiar_descripcion_item(data["descripcion"])
+        return data
 
     class Meta:
         model = PresupuestoItem
