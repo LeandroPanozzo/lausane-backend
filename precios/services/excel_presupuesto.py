@@ -22,6 +22,15 @@ def _sin_sufijo_descuento(descripcion: str) -> str:
     return _RE_SUFIJO_DESCUENTO.sub("", descripcion)
 
 
+def _con_nombres_actuales(descripcion: str) -> str:
+    """Presupuestos viejos tienen 'Chapa DD'/'Chapa Negra' guardado tal cual
+    (el nombre comercial cambió después) — los mostramos con el nombre
+    actual sin tener que tocar los datos guardados."""
+    descripcion = re.sub(r"^Chapa DD\b", "Chapa Laminado en Frío", descripcion)
+    descripcion = re.sub(r"^Chapa Negra\b", "Chapa Laminado en Caliente", descripcion)
+    return descripcion
+
+
 def generar_excel_presupuesto(presupuesto: Presupuesto) -> bytes:
     wb = Workbook()
     ws = wb.active
@@ -57,7 +66,7 @@ def generar_excel_presupuesto(presupuesto: Presupuesto) -> bytes:
 
     fila = fila_header + 1
     for i, item in enumerate(presupuesto.items.all()):
-        ws.cell(row=fila, column=1, value=_sin_sufijo_descuento(item.descripcion))
+        ws.cell(row=fila, column=1, value=_con_nombres_actuales(_sin_sufijo_descuento(item.descripcion)))
         ws.cell(row=fila, column=2, value=float(item.cantidad)).alignment = Alignment(horizontal="right")
         ws.cell(row=fila, column=2).number_format = "0.###"
         ws.cell(row=fila, column=3, value=item.unidad).alignment = Alignment(horizontal="center")

@@ -53,6 +53,15 @@ def _sin_sufijo_descuento(descripcion: str) -> str:
     return _RE_SUFIJO_DESCUENTO.sub("", descripcion)
 
 
+def _con_nombres_actuales(descripcion: str) -> str:
+    """Presupuestos viejos tienen 'Chapa DD'/'Chapa Negra' guardado tal cual
+    (el nombre comercial cambió después) — los mostramos con el nombre
+    actual sin tener que tocar los datos guardados."""
+    descripcion = re.sub(r"^Chapa DD\b", "Chapa Laminado en Frío", descripcion)
+    descripcion = re.sub(r"^Chapa Negra\b", "Chapa Laminado en Caliente", descripcion)
+    return descripcion
+
+
 def _formato_cantidad(valor: Decimal) -> str:
     """Evita que '500' se muestre como '500.000' por el decimal_places del campo."""
     texto = f"{valor:f}"
@@ -128,7 +137,7 @@ def generar_pdf_presupuesto(presupuesto: Presupuesto) -> bytes:
     filas = [encabezados]
     for item in presupuesto.items.all():
         filas.append([
-            Paragraph(_sin_sufijo_descuento(item.descripcion), styles["Normal"]),
+            Paragraph(_con_nombres_actuales(_sin_sufijo_descuento(item.descripcion)), styles["Normal"]),
             _formato_cantidad(item.cantidad),
             item.unidad,
             _formato_pesos(item.precio_unitario_pesos),

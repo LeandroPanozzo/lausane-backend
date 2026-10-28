@@ -140,11 +140,11 @@ class Cliente(models.Model):
     )
     incremento_dd = models.DecimalField(
         max_digits=6, decimal_places=3, validators=[MinValueValidator(Decimal("0"))],
-        help_text="% de incremento sobre precio base DD (ej: 8 = 8%)",
+        help_text="% de incremento sobre precio base Laminado en Frío (ej: 8 = 8%)",
     )
     incremento_negra = models.DecimalField(
         max_digits=6, decimal_places=3, validators=[MinValueValidator(Decimal("0"))],
-        help_text="% de incremento sobre precio base Negra (ej: 5 = 5%)",
+        help_text="% de incremento sobre precio base Laminado en Caliente (ej: 5 = 5%)",
     )
     descuento_dd = models.DecimalField(
         max_digits=5, decimal_places=2, default=Decimal("0"),
@@ -154,7 +154,7 @@ class Cliente(models.Model):
     descuento_negra = models.DecimalField(
         max_digits=5, decimal_places=2, default=Decimal("0"),
         validators=[MinValueValidator(Decimal("0"))],
-        help_text="% de descuento propio de este cliente sobre el precio de chapa Negra (0 = sin descuento)",
+        help_text="% de descuento propio de este cliente sobre el precio de Laminado en Caliente (0 = sin descuento)",
     )
     descuento_galvanizada = models.DecimalField(
         max_digits=5, decimal_places=2, default=Decimal("0"),
@@ -192,7 +192,7 @@ class MarkupEspesorChapa(models.Model):
 
     TIPO_DD = "DD"
     TIPO_NEGRA = "NEGRA"
-    TIPO_CHOICES = [(TIPO_DD, "Laminado en Frío"), (TIPO_NEGRA, "Negra")]
+    TIPO_CHOICES = [(TIPO_DD, "Laminado en Frío"), (TIPO_NEGRA, "Laminado en Caliente")]
 
     tipo = models.CharField(max_length=5, choices=TIPO_CHOICES)
     espesor = models.CharField(max_length=30, help_text="Código de espesor, ej: '16', '18', '12,14 y 20'")

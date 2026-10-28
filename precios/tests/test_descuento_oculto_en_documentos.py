@@ -3,7 +3,9 @@ from decimal import Decimal
 from rest_framework.test import APITestCase
 
 from precios.models import Cliente, Presupuesto, PresupuestoItem
-from precios.services.pdf_presupuesto import _sin_sufijo_descuento, generar_pdf_presupuesto
+from precios.services.pdf_presupuesto import (
+    _sin_sufijo_descuento, _con_nombres_actuales, generar_pdf_presupuesto,
+)
 from precios.services.excel_presupuesto import generar_excel_presupuesto
 
 
@@ -15,8 +17,30 @@ class SinSufijoDescuentoTests(APITestCase):
         self.assertEqual(_sin_sufijo_descuento("Tubo 30 60 2 (desc. 10,5%)"), "Tubo 30 60 2")
 
     def test_sin_sufijo_no_cambia_nada(self):
-        texto = "Chapa DD · espesor 23 · ancho 20000mm"
+        texto = "Chapa Laminado en Frío · espesor 23 · ancho 20000mm"
         self.assertEqual(_sin_sufijo_descuento(texto), texto)
+
+
+class ConNombresActualesTests(APITestCase):
+    def test_chapa_dd_vieja_se_renombra(self):
+        self.assertEqual(
+            _con_nombres_actuales("Chapa DD · espesor 23 · ancho 20000mm"),
+            "Chapa Laminado en Frío · espesor 23 · ancho 20000mm",
+        )
+
+    def test_chapa_negra_vieja_se_renombra(self):
+        self.assertEqual(
+            _con_nombres_actuales("Chapa Negra · espesor 10 · ancho 1000mm"),
+            "Chapa Laminado en Caliente · espesor 10 · ancho 1000mm",
+        )
+
+    def test_descripcion_ya_actualizada_no_cambia(self):
+        texto = "Chapa Laminado en Frío · espesor 23 · ancho 20000mm"
+        self.assertEqual(_con_nombres_actuales(texto), texto)
+
+    def test_no_toca_descripciones_sin_relacion(self):
+        texto = "Tubo 30 60 2"
+        self.assertEqual(_con_nombres_actuales(texto), texto)
 
 
 class DescuentoOcultoEnPdfYExcelTests(APITestCase):
