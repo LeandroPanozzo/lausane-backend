@@ -61,7 +61,7 @@ def generar_excel_presupuesto(presupuesto: Presupuesto) -> bytes:
         ws.cell(row=fila, column=2, value=float(item.cantidad)).alignment = Alignment(horizontal="right")
         ws.cell(row=fila, column=2).number_format = "0.###"
         ws.cell(row=fila, column=3, value=item.unidad).alignment = Alignment(horizontal="center")
-        ws.cell(row=fila, column=4, value=float(item.precio_unitario_efectivo_pesos)).number_format = "#,##0.00"
+        ws.cell(row=fila, column=4, value=float(item.precio_unitario_pesos)).number_format = "#,##0.00"
         ws.cell(row=fila, column=5, value=float(item.subtotal_pesos)).number_format = "#,##0.00"
         if i % 2 == 1:
             for col in range(1, 6):

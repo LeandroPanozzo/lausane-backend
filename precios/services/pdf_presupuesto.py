@@ -131,7 +131,7 @@ def generar_pdf_presupuesto(presupuesto: Presupuesto) -> bytes:
             Paragraph(_sin_sufijo_descuento(item.descripcion), styles["Normal"]),
             _formato_cantidad(item.cantidad),
             item.unidad,
-            _formato_pesos(item.precio_unitario_efectivo_pesos),
+            _formato_pesos(item.precio_unitario_pesos),
             _formato_pesos(item.subtotal_pesos),
         ])
         for ajuste in item.ajustes_unitarios.all():
