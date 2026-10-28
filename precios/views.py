@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 
 from .models import (
     Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, MarkupEspesorChapa, Tubo, Presupuesto,
-    PresupuestoItem, PresupuestoItemExtra,
+    PresupuestoItem, PresupuestoItemExtra, PresupuestoItemAjusteUnitario,
 )
 from .serializers import (
     ChapaGalvanizadaSerializer,
@@ -23,6 +23,7 @@ from .serializers import (
     ElegirImpuestoSerializer,
     EnviarEmailSerializer,
     MarkupEspesorChapaSerializer,
+    PresupuestoItemAjusteUnitarioSerializer,
     PresupuestoItemExtraSerializer,
     PresupuestoListSerializer,
     PresupuestoSerializer,
@@ -329,6 +330,27 @@ class PresupuestoViewSet(viewsets.ModelViewSet):
             PresupuestoItemExtra, pk=extra_pk, item_id=item_pk, item__presupuesto=presupuesto
         )
         extra.delete()
+        return Response(PresupuestoSerializer(presupuesto).data)
+
+    @action(detail=True, methods=["post"], url_path=r"items/(?P<item_pk>\d+)/agregar-ajuste-unitario")
+    def agregar_ajuste_unitario(self, request, pk=None, item_pk=None):
+        presupuesto = self.get_object()
+        item = get_object_or_404(PresupuestoItem, pk=item_pk, presupuesto=presupuesto)
+        serializer = PresupuestoItemAjusteUnitarioSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        PresupuestoItemAjusteUnitario.objects.create(item=item, **serializer.validated_data)
+        return Response(PresupuestoSerializer(presupuesto).data)
+
+    @action(
+        detail=True, methods=["delete"],
+        url_path=r"items/(?P<item_pk>\d+)/ajustes-unitarios/(?P<ajuste_pk>\d+)",
+    )
+    def quitar_ajuste_unitario(self, request, pk=None, item_pk=None, ajuste_pk=None):
+        presupuesto = self.get_object()
+        ajuste = get_object_or_404(
+            PresupuestoItemAjusteUnitario, pk=ajuste_pk, item_id=item_pk, item__presupuesto=presupuesto
+        )
+        ajuste.delete()
         return Response(PresupuestoSerializer(presupuesto).data)
 
     @action(detail=True, methods=["post"], url_path="elegir-impuesto")

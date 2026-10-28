@@ -412,9 +412,20 @@ class PresupuestoItem(models.Model):
         ordering = ["orden", "id"]
 
     @property
+    def total_ajustes_unitarios_pesos(self) -> Decimal:
+        return sum((a.monto_pesos for a in self.ajustes_unitarios.all()), Decimal("0"))
+
+    @property
+    def precio_unitario_efectivo_pesos(self) -> Decimal:
+        """Precio unitario + los ajustes manuales por unidad (ej: un extra fijo
+        que se decidió cobrar por cada unidad, no una sola vez)."""
+        return (self.precio_unitario_pesos + self.total_ajustes_unitarios_pesos).quantize(Decimal("0.01"))
+
+    @property
     def subtotal_pesos(self) -> Decimal:
-        """Cantidad x precio unitario, SIN los extras (eso se muestra aparte)."""
-        return (self.cantidad * self.precio_unitario_pesos).quantize(Decimal("0.01"))
+        """Cantidad x precio unitario efectivo (con los ajustes por unidad
+        aplicados), SIN los extras de línea completa (eso se muestra aparte)."""
+        return (self.cantidad * self.precio_unitario_efectivo_pesos).quantize(Decimal("0.01"))
 
     @property
     def total_extras_pesos(self) -> Decimal:
@@ -442,4 +453,24 @@ class PresupuestoItemExtra(models.Model):
 
     def __str__(self):
         return f"{self.descripcion} (+${self.precio_pesos})"
+
+
+class PresupuestoItemAjusteUnitario(models.Model):
+    """
+    Un agregado manual al precio UNITARIO de un ítem (a diferencia de
+    PresupuestoItemExtra, que es un monto fijo una sola vez: esto se
+    multiplica por la cantidad, porque pasa a formar parte del precio x
+    unidad). La descripción es opcional.
+    """
+
+    item = models.ForeignKey(PresupuestoItem, on_delete=models.CASCADE, related_name="ajustes_unitarios")
+    descripcion = models.CharField(max_length=200, blank=True, default="")
+    monto_pesos = models.DecimalField(max_digits=14, decimal_places=2)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["creado", "id"]
+
+    def __str__(self):
+        return f"{self.descripcion or 'Ajuste'} (+${self.monto_pesos}/u)"
 
