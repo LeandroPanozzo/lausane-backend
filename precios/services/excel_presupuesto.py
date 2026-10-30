@@ -21,11 +21,11 @@ def generar_excel_presupuesto(presupuesto: Presupuesto) -> bytes:
 
     ws["A1"] = "PRESUPUESTO LAUSANE"
     ws["A1"].font = Font(size=16, bold=True, color=ROJO)
-    ws.merge_cells("A1:E1")
+    ws.merge_cells("A1:F1")
 
     ws["A2"] = f"N° {presupuesto.codigo}"
     ws["A2"].font = Font(size=11, bold=True)
-    ws.merge_cells("A2:E2")
+    ws.merge_cells("A2:F2")
 
     fecha_local = timezone.localtime(presupuesto.creado).strftime("%d/%m/%Y")
     ws["A4"] = "Cliente:"
@@ -40,7 +40,7 @@ def generar_excel_presupuesto(presupuesto: Presupuesto) -> bytes:
         ws[f"A{fila}"].font = Font(bold=True)
 
     fila_header = 9
-    encabezados = ["Descripción", "Cantidad", "Unidad", "Precio unitario ($)", "Subtotal ($)"]
+    encabezados = ["Descripción", "Cantidad", "Unidad", "Longitud (mm)", "Precio unitario ($)", "Subtotal ($)"]
     for col, texto in enumerate(encabezados, start=1):
         celda = ws.cell(row=fila_header, column=col, value=texto)
         celda.font = Font(bold=True, color="FFFFFF")
@@ -53,22 +53,24 @@ def generar_excel_presupuesto(presupuesto: Presupuesto) -> bytes:
         ws.cell(row=fila, column=2, value=float(item.cantidad)).alignment = Alignment(horizontal="right")
         ws.cell(row=fila, column=2).number_format = "0.###"
         ws.cell(row=fila, column=3, value=item.unidad).alignment = Alignment(horizontal="center")
-        ws.cell(row=fila, column=4, value=float(item.precio_unitario_efectivo_pesos)).number_format = "#,##0.00"
-        ws.cell(row=fila, column=5, value=float(item.subtotal_pesos)).number_format = "#,##0.00"
+        celda_longitud = ws.cell(row=fila, column=4, value=item.longitud_mm if item.longitud_mm else "-")
+        celda_longitud.alignment = Alignment(horizontal="center")
+        ws.cell(row=fila, column=5, value=float(item.precio_unitario_efectivo_pesos)).number_format = "#,##0.00"
+        ws.cell(row=fila, column=6, value=float(item.subtotal_pesos)).number_format = "#,##0.00"
         if i % 2 == 1:
-            for col in range(1, 6):
+            for col in range(1, 7):
                 ws.cell(row=fila, column=col).fill = PatternFill("solid", fgColor=GRIS_CLARO)
         fila += 1
         for extra in item.extras.all():
             celda_desc = ws.cell(row=fila, column=1, value=f"   + {extra.descripcion}")
             celda_desc.font = Font(italic=True, size=9, color="666666")
-            ws.cell(row=fila, column=5, value=float(extra.precio_pesos)).number_format = "#,##0.00"
+            ws.cell(row=fila, column=6, value=float(extra.precio_pesos)).number_format = "#,##0.00"
             fila += 1
 
     fila += 1
-    ws.cell(row=fila, column=4, value="TOTAL").font = Font(bold=True)
-    ws.cell(row=fila, column=4).alignment = Alignment(horizontal="right")
-    total_celda = ws.cell(row=fila, column=5, value=float(presupuesto.total_pesos))
+    ws.cell(row=fila, column=5, value="TOTAL").font = Font(bold=True)
+    ws.cell(row=fila, column=5).alignment = Alignment(horizontal="right")
+    total_celda = ws.cell(row=fila, column=6, value=float(presupuesto.total_pesos))
     total_celda.font = Font(bold=True, size=12, color=ROJO)
     total_celda.number_format = "#,##0.00"
 
@@ -76,7 +78,7 @@ def generar_excel_presupuesto(presupuesto: Presupuesto) -> bytes:
         fila += 2
         ws.cell(row=fila, column=1, value=f"Notas: {presupuesto.notas}").font = Font(italic=True, size=9)
 
-    anchos = [46, 12, 12, 18, 18]
+    anchos = [46, 12, 12, 14, 18, 18]
     for i, ancho in enumerate(anchos, start=1):
         ws.column_dimensions[get_column_letter(i)].width = ancho
 

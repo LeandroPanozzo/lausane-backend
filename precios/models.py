@@ -215,6 +215,27 @@ class MarkupEspesorChapa(models.Model):
         return f"{self.tipo} · espesor {self.espesor} · {self.ancho_mm}mm · {pct}"
 
 
+class LongitudChapa(models.Model):
+    """
+    Longitudes estándar (mm) disponibles para un ancho de chapa dado, para
+    elegir al armar un presupuesto (además siempre se puede cargar una a
+    mano en el momento, sin que quede guardada acá). Se gestiona desde la
+    edición de cada chapa en el catálogo.
+    """
+
+    ancho_mm = models.CharField(max_length=20)
+    longitud_mm = models.PositiveIntegerField()
+
+    class Meta:
+        unique_together = ("ancho_mm", "longitud_mm")
+        ordering = ["ancho_mm", "longitud_mm"]
+        verbose_name = "Longitud de chapa"
+        verbose_name_plural = "Longitudes de chapa"
+
+    def __str__(self):
+        return f"{self.ancho_mm}mm → {self.longitud_mm}mm"
+
+
 class ChapaGalvanizada(models.Model):
     """
     Chapa galvanizada, por espesor/ancho. A diferencia de DD/Negra (que
@@ -406,6 +427,9 @@ class PresupuestoItem(models.Model):
     cantidad = models.DecimalField(max_digits=12, decimal_places=3, default=Decimal("1"))
     unidad = models.CharField(max_length=20, default="kg", help_text="kg, unidad, barra, etc.")
     precio_unitario_pesos = models.DecimalField(max_digits=14, decimal_places=2)
+    longitud_mm = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Longitud elegida (chapas) — vacío si no aplica (ej: tubos) o no se eligió",
+    )
     orden = models.PositiveIntegerField(default=0)
 
     class Meta:

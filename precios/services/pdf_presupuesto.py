@@ -115,24 +115,25 @@ def generar_pdf_presupuesto(presupuesto: Presupuesto) -> bytes:
         "ExtraItem", parent=styles["Normal"], fontSize=8.5, textColor=colors.HexColor("#666666"),
         leftIndent=10, fontName="Helvetica-Oblique",
     )
-    encabezados = ["Descripción", "Cantidad", "Unidad", "Precio unit.", "Subtotal"]
+    encabezados = ["Descripción", "Cantidad", "Unidad", "Longitud", "Precio unit.", "Subtotal"]
     filas = [encabezados]
     for item in presupuesto.items.all():
         filas.append([
             Paragraph(descripcion_item_con_ajustes(item), styles["Normal"]),
             _formato_cantidad(item.cantidad),
             item.unidad,
+            f"{item.longitud_mm}mm" if item.longitud_mm else "-",
             _formato_pesos(item.precio_unitario_efectivo_pesos),
             _formato_pesos(item.subtotal_pesos),
         ])
         for extra in item.extras.all():
             filas.append([
                 Paragraph(f"+ {extra.descripcion}", extra_style),
-                "", "", "",
+                "", "", "", "",
                 _formato_pesos(extra.precio_pesos),
             ])
 
-    tabla = Table(filas, colWidths=[80 * mm, 22 * mm, 22 * mm, 30 * mm, 30 * mm], repeatRows=1)
+    tabla = Table(filas, colWidths=[64 * mm, 18 * mm, 18 * mm, 20 * mm, 28 * mm, 28 * mm], repeatRows=1)
     tabla.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), ROJO_LAUSANE),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),

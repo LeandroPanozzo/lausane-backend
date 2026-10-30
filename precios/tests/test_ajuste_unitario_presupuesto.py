@@ -139,6 +139,7 @@ class AjusteUnitarioEnDocumentosTests(APITestCase):
         self.assertTrue(len(excel_bytes) > 0)
         ws = load_workbook(BytesIO(excel_bytes), data_only=True).active
         self.assertEqual(ws["A10"].value, "Chapa Laminado en Frío · espesor 16 (Estampado)")
-        self.assertEqual(ws["D10"].value, 1050)
-        self.assertEqual(ws["E10"].value, 2100)
+        self.assertEqual(ws["D10"].value, "-")
+        self.assertEqual(ws["E10"].value, 1050)
+        self.assertEqual(ws["F10"].value, 2100)
         self.assertIsNone(ws["A11"].value)

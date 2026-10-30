@@ -122,6 +122,7 @@ class ExtrasEnDocumentosTests(APITestCase):
         self.assertTrue(len(excel_bytes) > 0)
         ws = load_workbook(BytesIO(excel_bytes), data_only=True).active
         self.assertEqual(ws["A10"].value, "Tubo 30x60")
-        self.assertEqual(ws["D10"].value, 1000)
+        self.assertEqual(ws["D10"].value, "-")
+        self.assertEqual(ws["E10"].value, 1000)
         self.assertEqual(ws["A11"].value, "   + Flete")
-        self.assertEqual(ws["E11"].value, 800)
+        self.assertEqual(ws["F11"].value, 800)

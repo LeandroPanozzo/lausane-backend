@@ -10,6 +10,7 @@ router.register(r"tubos", views.TuboViewSet, basename="tubo")
 router.register(r"galvanizada", views.ChapaGalvanizadaViewSet, basename="galvanizada")
 router.register(r"gruesas", views.ChapaGruesaViewSet, basename="gruesa")
 router.register(r"presupuestos", views.PresupuestoViewSet, basename="presupuesto")
+router.register(r"longitudes-chapa", views.LongitudChapaViewSet, basename="longitud-chapa")
 
 urlpatterns = [
     # Rutas públicas primero, para que no choquen con el router de "presupuestos/<pk>/"

@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 
 from .models import (
     Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, MarkupEspesorChapa, Tubo, Presupuesto,
-    PresupuestoItem, PresupuestoItemExtra, PresupuestoItemAjusteUnitario,
+    PresupuestoItem, PresupuestoItemExtra, PresupuestoItemAjusteUnitario, LongitudChapa,
 )
 from .serializers import (
     ChapaGalvanizadaSerializer,
@@ -22,6 +22,7 @@ from .serializers import (
     CotizacionDolarSerializer,
     ElegirImpuestoSerializer,
     EnviarEmailSerializer,
+    LongitudChapaSerializer,
     MarkupEspesorChapaSerializer,
     PresupuestoItemAjusteUnitarioSerializer,
     PresupuestoItemExtraSerializer,
@@ -83,6 +84,25 @@ class MarkupEspesorChapaViewSet(viewsets.ModelViewSet):
         tipo = self.request.query_params.get("tipo")
         if tipo:
             qs = qs.filter(tipo=tipo)
+        return qs
+
+
+class LongitudChapaViewSet(viewsets.ModelViewSet):
+    """
+    Longitudes estándar (mm) disponibles por ancho de chapa, usadas al armar
+    un presupuesto. GET /api/longitudes-chapa/?ancho_mm=1220 filtra por ancho.
+    """
+
+    queryset = LongitudChapa.objects.all()
+    serializer_class = LongitudChapaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ancho_mm = self.request.query_params.get("ancho_mm")
+        if ancho_mm:
+            qs = qs.filter(ancho_mm=ancho_mm)
         return qs
 
 
