@@ -1,0 +1,13 @@
+DigitalOcean - datos de acceso (Droplet Lausane)
+
+Clave publica SSH (para pegar en "SSH Key content"):
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIyvCqd6DI/OwN3s/oJupEKUcWNhpol0NUErKjg9X9c7 lausane-digitalocean
+
+Nombre sugerido para la clave (campo "Give your SSH Key a name"):
+lausane-pc
+
+Contraseña para iniciar sesion:
+#15Totitotita15
+
+Nota: la clave privada (la que nunca se comparte) esta guardada en esta misma compu en:
+C:\Users\Estudiante\.ssh\id_ed25519
