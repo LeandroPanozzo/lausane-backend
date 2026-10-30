@@ -3,8 +3,8 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 
-from precios.models import Cliente, Presupuesto, PresupuestoItem
-from precios.services.texto_presupuesto import limpiar_descripcion_item
+from precios.models import Cliente, Presupuesto, PresupuestoItem, PresupuestoItemAjusteUnitario
+from precios.services.texto_presupuesto import descripcion_item_con_ajustes, limpiar_descripcion_item
 
 
 class LimpiarDescripcionItemTests(APITestCase):
@@ -42,6 +42,21 @@ class LimpiarDescripcionItemTests(APITestCase):
         self.assertEqual(
             limpiar_descripcion_item("Chapa DD · espesor 23 · ancho 20000mm (desc. 2%)"),
             "Chapa Laminado en Frío · espesor 23 · ancho 20000mm",
+        )
+
+    def test_agrega_los_extras_unitarios_al_lado_de_la_descripcion(self):
+        cliente = Cliente.objects.create(
+            numero=9012, nombre="Cliente Descripción", incremento_dd=Decimal("0"), incremento_negra=Decimal("0"),
+        )
+        presupuesto = Presupuesto.objects.create(cliente=cliente, cotizacion_dolar=Decimal("1000"))
+        item = PresupuestoItem.objects.create(
+            presupuesto=presupuesto, tipo=PresupuestoItem.TIPO_CHAPA, descripcion="Chapa DD · espesor 16",
+            cantidad=Decimal("1"), precio_unitario_pesos=Decimal("1000"),
+        )
+        PresupuestoItemAjusteUnitario.objects.create(item=item, descripcion="Estampado", monto_pesos=Decimal("50"))
+        self.assertEqual(
+            descripcion_item_con_ajustes(item),
+            "Chapa Laminado en Frío · espesor 16 (Estampado)",
         )
 
 

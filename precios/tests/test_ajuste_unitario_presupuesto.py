@@ -1,6 +1,8 @@
 from decimal import Decimal
+from io import BytesIO
 
 from django.contrib.auth import get_user_model
+from openpyxl import load_workbook
 from rest_framework.test import APITestCase
 
 from precios.models import Cliente, Presupuesto, PresupuestoItem, PresupuestoItemAjusteUnitario
@@ -53,14 +55,14 @@ class AjusteUnitarioAPITests(APITestCase):
         )
         self.presupuesto = Presupuesto.objects.create(cliente=self.cliente, cotizacion_dolar=Decimal("1000"))
         self.item = PresupuestoItem.objects.create(
-            presupuesto=self.presupuesto, tipo=PresupuestoItem.TIPO_OTRO, descripcion="Tubo 30x60",
+            presupuesto=self.presupuesto, tipo=PresupuestoItem.TIPO_CHAPA, descripcion="Chapa DD · espesor 16",
             cantidad=Decimal("2"), precio_unitario_pesos=Decimal("1000"),
         )
 
     def test_agregar_ajuste_ok(self):
         resp = self.client.post(
             f"/api/presupuestos/{self.presupuesto.id}/items/{self.item.id}/agregar-ajuste-unitario/",
-            {"descripcion": "Flete por unidad", "monto_pesos": "50"},
+            {"descripcion": "Estampado", "monto_pesos": "50"},
         )
         self.assertEqual(resp.status_code, 200)
         self.item.refresh_from_db()
@@ -68,14 +70,33 @@ class AjusteUnitarioAPITests(APITestCase):
         self.assertEqual(self.item.precio_unitario_efectivo_pesos, Decimal("1050.00"))
         item_devuelto = resp.data["items"][0]
         self.assertEqual(item_devuelto["precio_unitario_efectivo_pesos"], "1050.00")
-        self.assertEqual(item_devuelto["ajustes_unitarios"][0]["descripcion"], "Flete por unidad")
+        self.assertEqual(item_devuelto["ajustes_unitarios"][0]["descripcion"], "Estampado")
+        self.assertEqual(item_devuelto["descripcion_con_ajustes"], "Chapa Laminado en Frío · espesor 16 (Estampado)")
 
-    def test_agregar_ajuste_sin_descripcion_ok(self):
+    def test_agregar_ajuste_sin_descripcion_falla(self):
         resp = self.client.post(
             f"/api/presupuestos/{self.presupuesto.id}/items/{self.item.id}/agregar-ajuste-unitario/",
             {"monto_pesos": "50"},
         )
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 400)
+
+    def test_agregar_ajuste_con_tipo_no_permitido_falla(self):
+        resp = self.client.post(
+            f"/api/presupuestos/{self.presupuesto.id}/items/{self.item.id}/agregar-ajuste-unitario/",
+            {"descripcion": "Otro", "monto_pesos": "50"},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_agregar_ajuste_a_tubo_falla(self):
+        tubo = PresupuestoItem.objects.create(
+            presupuesto=self.presupuesto, tipo=PresupuestoItem.TIPO_TUBO, descripcion="Tubo 30x60",
+            cantidad=Decimal("2"), precio_unitario_pesos=Decimal("1000"),
+        )
+        resp = self.client.post(
+            f"/api/presupuestos/{self.presupuesto.id}/items/{tubo.id}/agregar-ajuste-unitario/",
+            {"descripcion": "Estampado", "monto_pesos": "50"},
+        )
+        self.assertEqual(resp.status_code, 400)
 
     def test_agregar_ajuste_sin_monto_falla(self):
         resp = self.client.post(
@@ -104,10 +125,10 @@ class AjusteUnitarioEnDocumentosTests(APITestCase):
             cliente=self.cliente, cotizacion_dolar=Decimal("1000"), impuesto_pct=Decimal("21"),
         )
         self.item = PresupuestoItem.objects.create(
-            presupuesto=self.presupuesto, tipo=PresupuestoItem.TIPO_OTRO, descripcion="Tubo 30x60",
+            presupuesto=self.presupuesto, tipo=PresupuestoItem.TIPO_CHAPA, descripcion="Chapa DD · espesor 16",
             cantidad=Decimal("2"), precio_unitario_pesos=Decimal("1000"),
         )
-        PresupuestoItemAjusteUnitario.objects.create(item=self.item, descripcion="Flete por unidad", monto_pesos=Decimal("50"))
+        PresupuestoItemAjusteUnitario.objects.create(item=self.item, descripcion="Estampado", monto_pesos=Decimal("50"))
 
     def test_pdf_con_ajuste_no_explota(self):
         pdf_bytes = generar_pdf_presupuesto(self.presupuesto)
@@ -116,3 +137,8 @@ class AjusteUnitarioEnDocumentosTests(APITestCase):
     def test_excel_con_ajuste_no_explota(self):
         excel_bytes = generar_excel_presupuesto(self.presupuesto)
         self.assertTrue(len(excel_bytes) > 0)
+        ws = load_workbook(BytesIO(excel_bytes), data_only=True).active
+        self.assertEqual(ws["A10"].value, "Chapa Laminado en Frío · espesor 16 (Estampado)")
+        self.assertEqual(ws["D10"].value, 1050)
+        self.assertEqual(ws["E10"].value, 2100)
+        self.assertIsNone(ws["A11"].value)

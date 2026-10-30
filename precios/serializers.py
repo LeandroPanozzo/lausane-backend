@@ -6,7 +6,7 @@ from .models import (
     Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, CotizacionDolar, MarkupEspesorChapa, Tubo,
     Presupuesto, PresupuestoItem, PresupuestoItemExtra, PresupuestoItemAjusteUnitario,
 )
-from .services.texto_presupuesto import limpiar_descripcion_item
+from .services.texto_presupuesto import descripcion_item_con_ajustes, limpiar_descripcion_item
 
 
 class ConfiguracionGlobalSerializer(serializers.ModelSerializer):
@@ -130,7 +130,7 @@ class PresupuestoItemExtraSerializer(serializers.ModelSerializer):
 
 
 class PresupuestoItemAjusteUnitarioSerializer(serializers.ModelSerializer):
-    descripcion = serializers.CharField(required=False, allow_blank=True, default="")
+    descripcion = serializers.CharField()
 
     class Meta:
         model = PresupuestoItemAjusteUnitario
@@ -141,6 +141,7 @@ class PresupuestoItemAjusteUnitarioSerializer(serializers.ModelSerializer):
 class PresupuestoItemSerializer(serializers.ModelSerializer):
     subtotal_pesos = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
     precio_unitario_efectivo_pesos = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+    descripcion_con_ajustes = serializers.SerializerMethodField()
     extras = PresupuestoItemExtraSerializer(many=True, read_only=True)
     ajustes_unitarios = PresupuestoItemAjusteUnitarioSerializer(many=True, read_only=True)
 
@@ -152,11 +153,15 @@ class PresupuestoItemSerializer(serializers.ModelSerializer):
         data["descripcion"] = limpiar_descripcion_item(data["descripcion"])
         return data
 
+    def get_descripcion_con_ajustes(self, instance):
+        return descripcion_item_con_ajustes(instance)
+
     class Meta:
         model = PresupuestoItem
         fields = [
             "id", "tipo", "descripcion", "cantidad", "unidad", "precio_unitario_pesos",
-            "precio_unitario_efectivo_pesos", "subtotal_pesos", "extras", "ajustes_unitarios", "orden",
+            "precio_unitario_efectivo_pesos", "subtotal_pesos", "descripcion_con_ajustes",
+            "extras", "ajustes_unitarios", "orden",
         ]
         read_only_fields = ["id"]
 
@@ -240,4 +245,3 @@ class ContactoPublicoSerializer(serializers.Serializer):
     telefono = serializers.CharField(max_length=30, required=False, allow_blank=True, default="")
     asunto = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
     mensaje = serializers.CharField(max_length=4000)
-

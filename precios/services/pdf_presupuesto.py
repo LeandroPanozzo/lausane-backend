@@ -19,7 +19,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_RIGHT, TA_CENTER
 
 from precios.models import Presupuesto
-from precios.services.texto_presupuesto import limpiar_descripcion_item
+from precios.services.texto_presupuesto import descripcion_item_con_ajustes
 
 ROJO_LAUSANE = colors.HexColor("#E30613")
 GRIS_TEXTO = colors.HexColor("#2b2b2b")
@@ -119,20 +119,12 @@ def generar_pdf_presupuesto(presupuesto: Presupuesto) -> bytes:
     filas = [encabezados]
     for item in presupuesto.items.all():
         filas.append([
-            Paragraph(limpiar_descripcion_item(item.descripcion), styles["Normal"]),
+            Paragraph(descripcion_item_con_ajustes(item), styles["Normal"]),
             _formato_cantidad(item.cantidad),
             item.unidad,
-            _formato_pesos(item.precio_unitario_pesos),
+            _formato_pesos(item.precio_unitario_efectivo_pesos),
             _formato_pesos(item.subtotal_pesos),
         ])
-        for ajuste in item.ajustes_unitarios.all():
-            etiqueta = ajuste.descripcion or "Ajuste"
-            filas.append([
-                Paragraph(f"+ {etiqueta} (por unidad)", extra_style),
-                "", "",
-                _formato_pesos(ajuste.monto_pesos),
-                "",
-            ])
         for extra in item.extras.all():
             filas.append([
                 Paragraph(f"+ {extra.descripcion}", extra_style),

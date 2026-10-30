@@ -8,7 +8,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from precios.models import Presupuesto
-from precios.services.texto_presupuesto import limpiar_descripcion_item
+from precios.services.texto_presupuesto import descripcion_item_con_ajustes
 
 ROJO = "E30613"
 GRIS_CLARO = "F4F4F5"
@@ -49,22 +49,16 @@ def generar_excel_presupuesto(presupuesto: Presupuesto) -> bytes:
 
     fila = fila_header + 1
     for i, item in enumerate(presupuesto.items.all()):
-        ws.cell(row=fila, column=1, value=limpiar_descripcion_item(item.descripcion))
+        ws.cell(row=fila, column=1, value=descripcion_item_con_ajustes(item))
         ws.cell(row=fila, column=2, value=float(item.cantidad)).alignment = Alignment(horizontal="right")
         ws.cell(row=fila, column=2).number_format = "0.###"
         ws.cell(row=fila, column=3, value=item.unidad).alignment = Alignment(horizontal="center")
-        ws.cell(row=fila, column=4, value=float(item.precio_unitario_pesos)).number_format = "#,##0.00"
+        ws.cell(row=fila, column=4, value=float(item.precio_unitario_efectivo_pesos)).number_format = "#,##0.00"
         ws.cell(row=fila, column=5, value=float(item.subtotal_pesos)).number_format = "#,##0.00"
         if i % 2 == 1:
             for col in range(1, 6):
                 ws.cell(row=fila, column=col).fill = PatternFill("solid", fgColor=GRIS_CLARO)
         fila += 1
-        for ajuste in item.ajustes_unitarios.all():
-            etiqueta = ajuste.descripcion or "Ajuste"
-            celda_desc = ws.cell(row=fila, column=1, value=f"   + {etiqueta} (por unidad)")
-            celda_desc.font = Font(italic=True, size=9, color="666666")
-            ws.cell(row=fila, column=4, value=float(ajuste.monto_pesos)).number_format = "#,##0.00"
-            fila += 1
         for extra in item.extras.all():
             celda_desc = ws.cell(row=fila, column=1, value=f"   + {extra.descripcion}")
             celda_desc.font = Font(italic=True, size=9, color="666666")

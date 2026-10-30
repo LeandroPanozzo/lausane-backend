@@ -147,6 +147,9 @@ El frontend arma un carrito por cliente y lo manda de una vez a
 
 Los precios de cada ítem quedan **congelados** al crear el presupuesto (no
 cambian después, aunque cambie el dólar o el % del cliente).
+En el detalle se puede sumar estampado o corte a medida al precio unitario de
+las chapas, y agregar flete a cualquier ítem. Esos mismos conceptos se
+reflejan en el PDF y el Excel del presupuesto.
 
 ### Configurar el envío de emails reales
 

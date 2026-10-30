@@ -318,7 +318,9 @@ class PresupuestoViewSet(viewsets.ModelViewSet):
     def agregar_extra(self, request, pk=None, item_pk=None):
         presupuesto = self.get_object()
         item = get_object_or_404(PresupuestoItem, pk=item_pk, presupuesto=presupuesto)
-        serializer = PresupuestoItemExtraSerializer(data=request.data)
+        datos = request.data.copy()
+        datos["descripcion"] = "Flete"
+        serializer = PresupuestoItemExtraSerializer(data=datos)
         serializer.is_valid(raise_exception=True)
         PresupuestoItemExtra.objects.create(item=item, **serializer.validated_data)
         return Response(PresupuestoSerializer(presupuesto).data)
@@ -336,8 +338,18 @@ class PresupuestoViewSet(viewsets.ModelViewSet):
     def agregar_ajuste_unitario(self, request, pk=None, item_pk=None):
         presupuesto = self.get_object()
         item = get_object_or_404(PresupuestoItem, pk=item_pk, presupuesto=presupuesto)
+        if item.tipo != PresupuestoItem.TIPO_CHAPA:
+            return Response(
+                {"detail": "Los extras de precio unitario solo se pueden agregar a chapas."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer = PresupuestoItemAjusteUnitarioSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        if serializer.validated_data["descripcion"] not in {"Estampado", "Corte a medida"}:
+            return Response(
+                {"detail": "El extra debe ser Estampado o Corte a medida."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         PresupuestoItemAjusteUnitario.objects.create(item=item, **serializer.validated_data)
         return Response(PresupuestoSerializer(presupuesto).data)
 
@@ -529,4 +541,3 @@ class PresupuestoPublicoPDFView(APIView):
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'inline; filename="presupuesto_lausane_{presupuesto.numero}.pdf"'
         return response
-

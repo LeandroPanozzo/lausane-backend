@@ -20,3 +20,12 @@ def limpiar_descripcion_item(descripcion: str) -> str:
     descripcion = re.sub(r"^Chapa DD\b", "Chapa Laminado en Frío", descripcion)
     descripcion = re.sub(r"^Chapa Negra\b", "Chapa Laminado en Caliente", descripcion)
     return descripcion
+
+
+def descripcion_item_con_ajustes(item) -> str:
+    """Agrega junto a la descripción los extras que forman parte del precio unitario."""
+    descripcion = limpiar_descripcion_item(item.descripcion)
+    etiquetas = [ajuste.descripcion or "Extra" for ajuste in item.ajustes_unitarios.all()]
+    if etiquetas:
+        descripcion = f"{descripcion} ({', '.join(etiquetas)})"
+    return descripcion

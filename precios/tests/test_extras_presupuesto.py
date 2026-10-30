@@ -1,6 +1,8 @@
+from io import BytesIO
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from openpyxl import load_workbook
 from rest_framework.test import APITestCase
 
 from precios.models import Cliente, Presupuesto, PresupuestoItem, PresupuestoItemExtra
@@ -68,14 +70,15 @@ class ExtrasAPITests(APITestCase):
         self.assertEqual(self.item.subtotal_pesos, Decimal("2000.00"))
         self.assertEqual(self.item.total_con_extras_pesos, Decimal("2800.00"))
         extra_devuelto = resp.data["items"][0]["extras"][0]
-        self.assertEqual(extra_devuelto["descripcion"], "Flete especial")
+        self.assertEqual(extra_devuelto["descripcion"], "Flete")
 
-    def test_agregar_extra_sin_descripcion_falla(self):
+    def test_agregar_flete_sin_descripcion_ok(self):
         resp = self.client.post(
             f"/api/presupuestos/{self.presupuesto.id}/items/{self.item.id}/agregar-extra/",
             {"precio_pesos": "800"},
         )
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["items"][0]["extras"][0]["descripcion"], "Flete")
 
     def test_agregar_extra_a_item_de_otro_presupuesto_404(self):
         otro_presupuesto = Presupuesto.objects.create(cliente=self.cliente, cotizacion_dolar=Decimal("1000"))
@@ -108,7 +111,7 @@ class ExtrasEnDocumentosTests(APITestCase):
             presupuesto=self.presupuesto, tipo=PresupuestoItem.TIPO_OTRO, descripcion="Tubo 30x60",
             cantidad=Decimal("2"), precio_unitario_pesos=Decimal("1000"),
         )
-        PresupuestoItemExtra.objects.create(item=self.item, descripcion="Flete especial", precio_pesos=Decimal("800"))
+        PresupuestoItemExtra.objects.create(item=self.item, descripcion="Flete", precio_pesos=Decimal("800"))
 
     def test_pdf_con_extra_no_explota(self):
         pdf_bytes = generar_pdf_presupuesto(self.presupuesto)
@@ -117,3 +120,8 @@ class ExtrasEnDocumentosTests(APITestCase):
     def test_excel_con_extra_no_explota(self):
         excel_bytes = generar_excel_presupuesto(self.presupuesto)
         self.assertTrue(len(excel_bytes) > 0)
+        ws = load_workbook(BytesIO(excel_bytes), data_only=True).active
+        self.assertEqual(ws["A10"].value, "Tubo 30x60")
+        self.assertEqual(ws["D10"].value, 1000)
+        self.assertEqual(ws["A11"].value, "   + Flete")
+        self.assertEqual(ws["E11"].value, 800)
