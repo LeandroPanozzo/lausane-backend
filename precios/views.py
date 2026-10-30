@@ -14,6 +14,7 @@ from .models import (
     PresupuestoItem, PresupuestoItemExtra, PresupuestoItemAjusteUnitario, LongitudChapa,
 )
 from .serializers import (
+    AsignarLongitudSerializer,
     ChapaGalvanizadaSerializer,
     ChapaGruesaSerializer,
     ClienteSerializer,
@@ -383,6 +384,28 @@ class PresupuestoViewSet(viewsets.ModelViewSet):
             PresupuestoItemAjusteUnitario, pk=ajuste_pk, item_id=item_pk, item__presupuesto=presupuesto
         )
         ajuste.delete()
+        return Response(PresupuestoSerializer(presupuesto).data)
+
+    @action(detail=True, methods=["post"], url_path=r"items/(?P<item_pk>\d+)/longitud")
+    def asignar_longitud(self, request, pk=None, item_pk=None):
+        """
+        Asigna/cambia la longitud de un ítem de chapa ya creado (presupuestos
+        armados antes de que existiera este campo, o si se eligió mal).
+        """
+        presupuesto = self.get_object()
+        item = get_object_or_404(PresupuestoItem, pk=item_pk, presupuesto=presupuesto)
+        if item.tipo != PresupuestoItem.TIPO_CHAPA:
+            return Response(
+                {"detail": "La longitud solo aplica a ítems de chapa."}, status=status.HTTP_400_BAD_REQUEST
+            )
+        serializer = AsignarLongitudSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        item.longitud_mm = serializer.validated_data["longitud_mm"]
+        item.save(update_fields=["longitud_mm"])
+        # El queryset de este viewset trae "items" con prefetch_related, ya
+        # cacheado por self.get_object() ANTES de este guardado — sin esto la
+        # respuesta serializaría el valor viejo de longitud_mm.
+        presupuesto.refresh_from_db()
         return Response(PresupuestoSerializer(presupuesto).data)
 
     @action(detail=True, methods=["post"], url_path="elegir-impuesto")

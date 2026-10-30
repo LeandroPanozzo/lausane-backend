@@ -95,3 +95,59 @@ class LongitudEnItemPresupuestoTests(APITestCase):
         self.assertTrue(pdf_bytes.startswith(b"%PDF"))
         excel_bytes = generar_excel_presupuesto(presupuesto)
         self.assertTrue(len(excel_bytes) > 0)
+
+
+class AsignarLongitudItemExistenteTests(APITestCase):
+    """Presupuestos ya armados (sin longitud) deben poder recibirla ahora."""
+
+    def setUp(self):
+        self.usuario = get_user_model().objects.create_user(username="u3", password="x", is_staff=True)
+        self.client.force_authenticate(self.usuario)
+        self.cliente = Cliente.objects.create(
+            numero=9013, nombre="Cliente Retroactivo", incremento_dd=Decimal("0"), incremento_negra=Decimal("0"),
+        )
+        self.presupuesto = Presupuesto.objects.create(
+            cliente=self.cliente, cotizacion_dolar=Decimal("1000"), impuesto_pct=Decimal("21"),
+        )
+        self.item_chapa = PresupuestoItem.objects.create(
+            presupuesto=self.presupuesto, tipo=PresupuestoItem.TIPO_CHAPA,
+            descripcion="Chapa Laminado en Frío · espesor 12 · ancho 1220mm",
+            cantidad=Decimal("10"), precio_unitario_pesos=Decimal("1000"),
+        )
+        self.item_tubo = PresupuestoItem.objects.create(
+            presupuesto=self.presupuesto, tipo=PresupuestoItem.TIPO_TUBO,
+            descripcion="Tubo 30x60", cantidad=Decimal("2"), precio_unitario_pesos=Decimal("500"),
+        )
+
+    def test_asignar_longitud_a_item_de_chapa_sin_longitud(self):
+        url = f"/api/presupuestos/{self.presupuesto.id}/items/{self.item_chapa.id}/longitud/"
+        resp = self.client.post(url, {"longitud_mm": 3000}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.item_chapa.refresh_from_db()
+        self.assertEqual(self.item_chapa.longitud_mm, 3000)
+
+    def test_asignar_longitud_manual_no_listada(self):
+        url = f"/api/presupuestos/{self.presupuesto.id}/items/{self.item_chapa.id}/longitud/"
+        resp = self.client.post(url, {"longitud_mm": 4500}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.item_chapa.refresh_from_db()
+        self.assertEqual(self.item_chapa.longitud_mm, 4500)
+
+    def test_asignar_longitud_a_tubo_falla(self):
+        url = f"/api/presupuestos/{self.presupuesto.id}/items/{self.item_tubo.id}/longitud/"
+        resp = self.client.post(url, {"longitud_mm": 3000}, format="json")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_asignar_longitud_invalida_falla(self):
+        url = f"/api/presupuestos/{self.presupuesto.id}/items/{self.item_chapa.id}/longitud/"
+        resp = self.client.post(url, {"longitud_mm": -5}, format="json")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_cambiar_longitud_ya_asignada(self):
+        self.item_chapa.longitud_mm = 2440
+        self.item_chapa.save(update_fields=["longitud_mm"])
+        url = f"/api/presupuestos/{self.presupuesto.id}/items/{self.item_chapa.id}/longitud/"
+        resp = self.client.post(url, {"longitud_mm": 6000}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.item_chapa.refresh_from_db()
+        self.assertEqual(self.item_chapa.longitud_mm, 6000)

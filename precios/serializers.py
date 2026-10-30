@@ -234,6 +234,10 @@ class ElegirImpuestoSerializer(serializers.Serializer):
     impuesto_pct = serializers.ChoiceField(choices=Presupuesto.IMPUESTO_CHOICES)
 
 
+class AsignarLongitudSerializer(serializers.Serializer):
+    longitud_mm = serializers.IntegerField(min_value=1)
+
+
 class SolicitarResetPasswordSerializer(serializers.Serializer):
     username = serializers.CharField()
 
