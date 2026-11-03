@@ -119,7 +119,7 @@ class ClienteResumenSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Cliente
-        fields = ["id", "numero", "nombre", "email", "telefono"]
+        fields = ["id", "numero", "nombre", "email", "telefono", "notas"]
 
 
 class PresupuestoItemExtraSerializer(serializers.ModelSerializer):
