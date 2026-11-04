@@ -79,7 +79,10 @@ class ClienteSerializer(serializers.ModelSerializer):
 class MarkupEspesorChapaSerializer(serializers.ModelSerializer):
     class Meta:
         model = MarkupEspesorChapa
-        fields = ["id", "tipo", "espesor", "ancho_mm", "porcentaje", "orden", "activo"]
+        fields = [
+            "id", "tipo", "espesor", "ancho_mm", "porcentaje",
+            "precio_venta_manual", "precio_venta_moneda", "orden", "activo",
+        ]
         read_only_fields = ["id"]
 
 
@@ -88,7 +91,7 @@ class ChapaGalvanizadaSerializer(serializers.ModelSerializer):
         model = ChapaGalvanizada
         fields = [
             "id", "espesor", "ancho_mm", "costo_usd_kg", "activo", "usar_incremento_general",
-            "orden", "creado", "actualizado",
+            "precio_venta_manual", "precio_venta_moneda", "orden", "creado", "actualizado",
         ]
         read_only_fields = ["id", "creado", "actualizado"]
 
@@ -98,7 +101,7 @@ class ChapaGruesaSerializer(serializers.ModelSerializer):
         model = ChapaGruesa
         fields = [
             "id", "espesor", "ancho_mm", "costo_usd_kg", "activo", "usar_incremento_general",
-            "orden", "creado", "actualizado",
+            "precio_venta_manual", "precio_venta_moneda", "orden", "creado", "actualizado",
         ]
         read_only_fields = ["id", "creado", "actualizado"]
 

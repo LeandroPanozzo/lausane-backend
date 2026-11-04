@@ -5,6 +5,13 @@ from django.conf import settings
 from django.db import models, transaction
 from django.core.validators import MinValueValidator
 
+# Moneda del "Precio de venta" manual que se puede cargar en cada chapa (DD,
+# Negra, Galvanizada, Gruesa), para pisar el cálculo automático (% sobre base
+# o costo + incremento general) con un valor fijo elegido a mano.
+MONEDA_USD = "USD"
+MONEDA_ARS = "ARS"
+MONEDA_CHOICES = [(MONEDA_USD, "Dólares (US$)"), (MONEDA_ARS, "Pesos ($)")]
+
 
 class ConfiguracionGlobal(models.Model):
     """
@@ -201,6 +208,15 @@ class MarkupEspesorChapa(models.Model):
         max_digits=6, decimal_places=4, null=True, blank=True,
         help_text="Recargo como fracción sobre la base (0.07 = 7%). Vacío = no disponible (era 'XXX' en el Excel)",
     )
+    precio_venta_manual = models.DecimalField(
+        max_digits=12, decimal_places=4, null=True, blank=True,
+        help_text=(
+            "Precio de venta por kg cargado a mano. Si tiene un valor, se usa "
+            "directamente (en vez del % de recargo sobre la base) para calcular "
+            "el presupuesto — dejarlo vacío vuelve a usar el cálculo automático."
+        ),
+    )
+    precio_venta_moneda = models.CharField(max_length=3, choices=MONEDA_CHOICES, default=MONEDA_ARS)
     orden = models.PositiveIntegerField(default=0)
     activo = models.BooleanField(default=True, help_text="Si está inactivo, no aparece en la lista de precios del cliente")
 
@@ -262,6 +278,15 @@ class ChapaGalvanizada(models.Model):
             "incremento_galvanizada) — para cuando un espesor/ancho puntual no debe llevar recargo."
         ),
     )
+    precio_venta_manual = models.DecimalField(
+        max_digits=12, decimal_places=4, null=True, blank=True,
+        help_text=(
+            "Precio de venta por kg cargado a mano. Si tiene un valor, se usa "
+            "directamente (en vez de costo + incremento general) para calcular "
+            "el presupuesto — dejarlo vacío vuelve a usar el cálculo automático."
+        ),
+    )
+    precio_venta_moneda = models.CharField(max_length=3, choices=MONEDA_CHOICES, default=MONEDA_ARS)
     orden = models.PositiveIntegerField(default=0)
     creado = models.DateTimeField(auto_now_add=True)
     actualizado = models.DateTimeField(auto_now=True)
@@ -295,6 +320,15 @@ class ChapaGruesa(models.Model):
             "incremento_gruesas) — para cuando un espesor/ancho puntual no debe llevar recargo."
         ),
     )
+    precio_venta_manual = models.DecimalField(
+        max_digits=12, decimal_places=4, null=True, blank=True,
+        help_text=(
+            "Precio de venta por kg cargado a mano. Si tiene un valor, se usa "
+            "directamente (en vez de costo + incremento general) para calcular "
+            "el presupuesto — dejarlo vacío vuelve a usar el cálculo automático."
+        ),
+    )
+    precio_venta_moneda = models.CharField(max_length=3, choices=MONEDA_CHOICES, default=MONEDA_ARS)
     orden = models.PositiveIntegerField(default=0)
     creado = models.DateTimeField(auto_now_add=True)
     actualizado = models.DateTimeField(auto_now=True)

@@ -5,7 +5,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.test import APITestCase
 
-from precios.models import ChapaGalvanizada, ChapaGruesa, Cliente, ConfiguracionGlobal, MarkupEspesorChapa, Tubo
+from precios.models import ChapaGalvanizada, ChapaGruesa, Cliente, ConfiguracionGlobal, MarkupEspesorChapa, MONEDA_ARS, MONEDA_USD, Tubo
 from precios.services import calculo_precios
 
 
@@ -139,6 +139,193 @@ class CalcularListaPreciosChapaTests(TestCase):
         self.cliente.save()
         precios = calculo_precios.calcular_lista_precios_chapa(self.cliente, self.config, Decimal("1000"))
         self.assertEqual(precios[MarkupEspesorChapa.TIPO_NEGRA]["descuento_pct"], Decimal("0"))
+
+
+class PrecioVentaManualChapaDDTests(TestCase):
+    """El "Precio de venta" manual (por kg) pisa el % sobre la base — solo
+    el descuento propio del cliente sigue aplicándose encima."""
+
+    def setUp(self):
+        self.config = ConfiguracionGlobal.actual()
+        self.config.precio_base_dd = Decimal("1.3")
+        self.config.save()
+        self.cliente = Cliente.objects.create(
+            numero=1, nombre="Cliente Test", incremento_dd=Decimal("8"), incremento_negra=Decimal("5"),
+        )
+
+    def test_precio_manual_en_pesos_se_usa_directo(self):
+        MarkupEspesorChapa.objects.create(
+            tipo=MarkupEspesorChapa.TIPO_DD, espesor="16", ancho_mm="1000", porcentaje=Decimal("0.07"),
+            precio_venta_manual=Decimal("1500"), precio_venta_moneda=MONEDA_ARS,
+        )
+        precios = calculo_precios.calcular_lista_precios_chapa(self.cliente, self.config, Decimal("1000"))
+        fila = next(f for f in precios[MarkupEspesorChapa.TIPO_DD]["precios_por_espesor"] if f["espesor"] == "16")
+        self.assertTrue(fila["disponible"])
+        self.assertEqual(fila["precio_pesos"], Decimal("1500.00"))
+        self.assertEqual(fila["precio_usd"], Decimal("1.5").quantize(Decimal("0.0001")))
+
+    def test_precio_manual_en_dolares_se_multiplica_por_cotizacion(self):
+        MarkupEspesorChapa.objects.create(
+            tipo=MarkupEspesorChapa.TIPO_DD, espesor="16", ancho_mm="1000", porcentaje=Decimal("0.07"),
+            precio_venta_manual=Decimal("2"), precio_venta_moneda=MONEDA_USD,
+        )
+        precios = calculo_precios.calcular_lista_precios_chapa(self.cliente, self.config, Decimal("1000"))
+        fila = next(f for f in precios[MarkupEspesorChapa.TIPO_DD]["precios_por_espesor"] if f["espesor"] == "16")
+        self.assertEqual(fila["precio_usd"], Decimal("2").quantize(Decimal("0.0001")))
+        self.assertEqual(fila["precio_pesos"], Decimal("2000.00"))
+
+    def test_precio_manual_hace_disponible_una_fila_sin_porcentaje(self):
+        MarkupEspesorChapa.objects.create(
+            tipo=MarkupEspesorChapa.TIPO_DD, espesor="18", ancho_mm="1000", porcentaje=None,
+            precio_venta_manual=Decimal("1800"), precio_venta_moneda=MONEDA_ARS,
+        )
+        precios = calculo_precios.calcular_lista_precios_chapa(self.cliente, self.config, Decimal("1000"))
+        fila = next(f for f in precios[MarkupEspesorChapa.TIPO_DD]["precios_por_espesor"] if f["espesor"] == "18")
+        self.assertTrue(fila["disponible"])
+        self.assertEqual(fila["precio_pesos"], Decimal("1800.00"))
+
+    def test_sin_precio_manual_sigue_usando_el_calculo_automatico(self):
+        MarkupEspesorChapa.objects.create(
+            tipo=MarkupEspesorChapa.TIPO_DD, espesor="16", ancho_mm="1000", porcentaje=Decimal("0.07"),
+        )
+        precios = calculo_precios.calcular_lista_precios_chapa(self.cliente, self.config, Decimal("1000"))
+        fila = next(f for f in precios[MarkupEspesorChapa.TIPO_DD]["precios_por_espesor"] if f["espesor"] == "16")
+        self.assertEqual(fila["precio_usd"], Decimal("1.5023"))
+
+    def test_el_descuento_del_cliente_se_aplica_sobre_el_precio_manual(self):
+        self.cliente.descuento_dd = Decimal("10")
+        self.cliente.save()
+        MarkupEspesorChapa.objects.create(
+            tipo=MarkupEspesorChapa.TIPO_DD, espesor="16", ancho_mm="1000", porcentaje=Decimal("0.07"),
+            precio_venta_manual=Decimal("1000"), precio_venta_moneda=MONEDA_ARS,
+        )
+        precios = calculo_precios.calcular_lista_precios_chapa(self.cliente, self.config, Decimal("1000"))
+        fila = next(f for f in precios[MarkupEspesorChapa.TIPO_DD]["precios_por_espesor"] if f["espesor"] == "16")
+        self.assertEqual(fila["precio_pesos"], Decimal("900.00"))
+
+
+class PrecioVentaManualGalvanizadaTests(TestCase):
+    def test_precio_manual_en_dolares_pisa_costo_e_incremento(self):
+        config = ConfiguracionGlobal(incremento_galvanizada=Decimal("0.20"))
+        chapa = ChapaGalvanizada(
+            espesor="16", ancho_mm="1000", costo_usd_kg=Decimal("1.5"),
+            precio_venta_manual=Decimal("3"), precio_venta_moneda=MONEDA_USD,
+        )
+        resultado = calculo_precios.calcular_precio_galvanizada(chapa, config, cotizacion=Decimal("1000"))
+        self.assertIsNone(resultado["incremento_aplicado"])
+        self.assertEqual(resultado["precio_venta_usd_kg"], Decimal("3").quantize(Decimal("0.00001")))
+        self.assertEqual(resultado["precio_venta_pesos_kg"], Decimal("3000.00"))
+
+    def test_precio_manual_en_pesos_pisa_costo_e_incremento(self):
+        config = ConfiguracionGlobal(incremento_galvanizada=Decimal("0.20"))
+        chapa = ChapaGalvanizada(
+            espesor="16", ancho_mm="1000", costo_usd_kg=Decimal("1.5"),
+            precio_venta_manual=Decimal("2500"), precio_venta_moneda=MONEDA_ARS,
+        )
+        resultado = calculo_precios.calcular_precio_galvanizada(chapa, config, cotizacion=Decimal("1000"))
+        self.assertEqual(resultado["precio_venta_pesos_kg"], Decimal("2500.00"))
+
+    def test_el_descuento_del_cliente_se_aplica_sobre_el_precio_manual(self):
+        config = ConfiguracionGlobal(incremento_galvanizada=Decimal("0.20"))
+        chapa = ChapaGalvanizada(
+            espesor="16", ancho_mm="1000", costo_usd_kg=Decimal("1.5"),
+            precio_venta_manual=Decimal("2000"), precio_venta_moneda=MONEDA_ARS,
+        )
+        resultado = calculo_precios.calcular_precio_galvanizada(
+            chapa, config, cotizacion=Decimal("1000"), descuento_pct=Decimal("10"),
+        )
+        self.assertEqual(resultado["precio_venta_pesos_kg"], Decimal("1800.00"))
+
+    def test_sin_precio_manual_sigue_usando_costo_e_incremento(self):
+        config = ConfiguracionGlobal(incremento_galvanizada=Decimal("0.20"))
+        chapa = ChapaGalvanizada(espesor="16", ancho_mm="1000", costo_usd_kg=Decimal("1.5"))
+        resultado = calculo_precios.calcular_precio_galvanizada(chapa, config, cotizacion=Decimal("1000"))
+        self.assertEqual(resultado["precio_venta_usd_kg"], (Decimal("1.5") * Decimal("1.20")).quantize(Decimal("0.00001")))
+
+
+class PrecioVentaManualGruesaTests(TestCase):
+    def test_precio_manual_en_dolares_pisa_costo_e_incremento(self):
+        config = ConfiguracionGlobal(incremento_gruesas=Decimal("0.20"))
+        chapa = ChapaGruesa(
+            espesor="25", ancho_mm="2000", costo_usd_kg=Decimal("1.8"),
+            precio_venta_manual=Decimal("4"), precio_venta_moneda=MONEDA_USD,
+        )
+        resultado = calculo_precios.calcular_precio_gruesa(chapa, config, cotizacion=Decimal("1000"))
+        self.assertIsNone(resultado["incremento_aplicado"])
+        self.assertEqual(resultado["precio_venta_usd_kg"], Decimal("4").quantize(Decimal("0.00001")))
+        self.assertEqual(resultado["precio_venta_pesos_kg"], Decimal("4000.00"))
+
+    def test_sin_precio_manual_sigue_usando_costo_e_incremento(self):
+        config = ConfiguracionGlobal(incremento_gruesas=Decimal("0.20"))
+        chapa = ChapaGruesa(espesor="25", ancho_mm="2000", costo_usd_kg=Decimal("1.8"))
+        resultado = calculo_precios.calcular_precio_gruesa(chapa, config, cotizacion=Decimal("1000"))
+        self.assertEqual(resultado["precio_venta_usd_kg"], (Decimal("1.8") * Decimal("1.20")).quantize(Decimal("0.00001")))
+
+
+class PrecioVentaManualAPITests(APITestCase):
+    """El campo se edita por PATCH en cada catálogo y se refleja en los
+    endpoints de lista de precios usados al armar un presupuesto."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(username="tester", password="Sup3rSecret!42")
+        self.client.post("/api/auth/token/", {"username": "tester", "password": "Sup3rSecret!42"}, format="json")
+
+    def test_markup_chapa_patch_precio_manual_y_se_ve_en_precios_del_cliente(self):
+        config = ConfiguracionGlobal.actual()
+        config.precio_base_dd = Decimal("1.3")
+        config.save()
+        cliente = Cliente.objects.create(numero=1, nombre="Cliente Test", incremento_dd=Decimal("8"), incremento_negra=Decimal("5"))
+        markup = MarkupEspesorChapa.objects.create(
+            tipo=MarkupEspesorChapa.TIPO_DD, espesor="16", ancho_mm="1000", porcentaje=Decimal("0.07"),
+        )
+        resp = self.client.patch(
+            f"/api/markups-chapa/{markup.id}/",
+            {"precio_venta_manual": "1500", "precio_venta_moneda": "ARS"}, format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        resp = self.client.get(f"/api/clientes/{cliente.id}/precios/")
+        fila = next(f for f in resp.data["precios"]["DD"]["precios_por_espesor"] if f["espesor"] == "16")
+        self.assertEqual(Decimal(str(fila["precio_pesos"])), Decimal("1500.00"))
+
+    def test_galvanizada_patch_precio_manual_y_se_ve_en_lista_precios(self):
+        chapa = ChapaGalvanizada.objects.create(espesor="16", ancho_mm="1000", costo_usd_kg=Decimal("1.5"))
+        resp = self.client.patch(
+            f"/api/galvanizada/{chapa.id}/",
+            {"precio_venta_manual": "3", "precio_venta_moneda": "USD"}, format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        resp = self.client.get("/api/galvanizada/lista-precios/")
+        fila = next(c for c in resp.data["chapas"] if c["id"] == chapa.id)
+        self.assertEqual(Decimal(str(fila["precio_venta_usd_kg"])), Decimal("3").quantize(Decimal("0.00001")))
+
+    def test_gruesa_patch_precio_manual_y_se_ve_en_lista_precios(self):
+        chapa = ChapaGruesa.objects.create(espesor="25", ancho_mm="2000", costo_usd_kg=Decimal("1.8"))
+        resp = self.client.patch(
+            f"/api/gruesas/{chapa.id}/",
+            {"precio_venta_manual": "4000", "precio_venta_moneda": "ARS"}, format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        resp = self.client.get("/api/gruesas/lista-precios/")
+        fila = next(c for c in resp.data["chapas"] if c["id"] == chapa.id)
+        self.assertEqual(Decimal(str(fila["precio_venta_pesos_kg"])), Decimal("4000.00"))
+
+    def test_limpiar_el_precio_manual_vuelve_al_calculo_automatico(self):
+        chapa = ChapaGalvanizada.objects.create(
+            espesor="16", ancho_mm="1000", costo_usd_kg=Decimal("1.5"),
+            precio_venta_manual=Decimal("3"), precio_venta_moneda="USD",
+        )
+        resp = self.client.patch(f"/api/galvanizada/{chapa.id}/", {"precio_venta_manual": None}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.data["precio_venta_manual"])
+
+        resp = self.client.get("/api/galvanizada/lista-precios/")
+        fila = next(c for c in resp.data["chapas"] if c["id"] == chapa.id)
+        # Vuelve a costo * (1 + incremento_galvanizada por defecto = 0.20)
+        self.assertEqual(Decimal(str(fila["precio_venta_usd_kg"])), Decimal("1.8").quantize(Decimal("0.00001")))
 
 
 class DescuentoTuboAPITests(APITestCase):

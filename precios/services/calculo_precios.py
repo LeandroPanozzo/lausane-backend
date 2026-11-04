@@ -15,7 +15,7 @@ Y en la hoja de cada cliente (ej. hoja "1"):
 from decimal import Decimal
 from typing import Optional
 
-from precios.models import Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, MarkupEspesorChapa, Tubo
+from precios.models import Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, MarkupEspesorChapa, MONEDA_USD, Tubo
 
 
 def coeficiente(incremento_pct: Decimal) -> Decimal:
@@ -71,23 +71,40 @@ def calcular_lista_precios_chapa(cliente: Cliente, config: ConfiguracionGlobal, 
         precios_por_espesor = []
         markups = MarkupEspesorChapa.objects.filter(tipo=tipo, activo=True).order_by("orden", "espesor")
         for m in markups:
-            if m.porcentaje is None:
+            if m.precio_venta_manual is not None:
+                # Precio cargado a mano: pisa el % sobre la base (que además
+                # depende del incremento propio de CADA cliente) con un valor
+                # fijo, igual para todos — solo el descuento del cliente sigue
+                # aplicándose encima.
+                if m.precio_venta_moneda == MONEDA_USD:
+                    precio_usd_sin_descuento = m.precio_venta_manual
+                else:
+                    precio_usd_sin_descuento = m.precio_venta_manual / cotizacion
+                precio_pesos_sin_descuento = precio_usd_sin_descuento * cotizacion
+            elif m.porcentaje is None:
                 precios_por_espesor.append({
                     "espesor": m.espesor,
                     "ancho_mm": m.ancho_mm,
                     "porcentaje": None,
+                    "precio_venta_manual": None,
+                    "precio_venta_moneda": m.precio_venta_moneda,
                     "precio_usd": None,
                     "precio_pesos": None,
                     "disponible": False,
                 })
                 continue
-            factor = Decimal("1") + m.porcentaje
+            else:
+                factor = Decimal("1") + m.porcentaje
+                precio_usd_sin_descuento = base["base_usd"] * factor
+                precio_pesos_sin_descuento = base["base_pesos"] * factor
             precios_por_espesor.append({
                 "espesor": m.espesor,
                 "ancho_mm": m.ancho_mm,
                 "porcentaje": m.porcentaje,
-                "precio_usd": (base["base_usd"] * factor * factor_descuento).quantize(Decimal("0.0001")),
-                "precio_pesos": (base["base_pesos"] * factor * factor_descuento).quantize(Decimal("0.01")),
+                "precio_venta_manual": m.precio_venta_manual,
+                "precio_venta_moneda": m.precio_venta_moneda,
+                "precio_usd": (precio_usd_sin_descuento * factor_descuento).quantize(Decimal("0.0001")),
+                "precio_pesos": (precio_pesos_sin_descuento * factor_descuento).quantize(Decimal("0.01")),
                 "disponible": True,
             })
         resultado[tipo] = {
@@ -163,10 +180,21 @@ def calcular_precio_galvanizada(
     `descuento_pct` es el % de descuento propio de un cliente (Cliente.
     descuento_galvanizada) — se aplica sobre el precio final, igual que el
     descuento de DD/Negra (ver calcular_lista_precios_chapa). 0 = sin cambio.
+
+    Si `chapa.precio_venta_manual` tiene un valor, pisa el costo + incremento
+    general con ese precio fijo — el descuento del cliente sigue aplicándose.
     """
-    incremento = config.incremento_galvanizada if chapa.usar_incremento_general else Decimal("0")
     factor_descuento = Decimal("1") - (descuento_pct / Decimal("100"))
-    precio_usd_kg = chapa.costo_usd_kg * (Decimal("1") + incremento) * factor_descuento
+    if chapa.precio_venta_manual is not None:
+        incremento = None
+        if chapa.precio_venta_moneda == MONEDA_USD:
+            precio_usd_sin_descuento = chapa.precio_venta_manual
+        else:
+            precio_usd_sin_descuento = chapa.precio_venta_manual / cotizacion
+    else:
+        incremento = config.incremento_galvanizada if chapa.usar_incremento_general else Decimal("0")
+        precio_usd_sin_descuento = chapa.costo_usd_kg * (Decimal("1") + incremento)
+    precio_usd_kg = precio_usd_sin_descuento * factor_descuento
     precio_pesos_kg = precio_usd_kg * cotizacion
     return {
         "id": chapa.id,
@@ -176,6 +204,8 @@ def calcular_precio_galvanizada(
         "usar_incremento_general": chapa.usar_incremento_general,
         "incremento_aplicado": incremento,
         "descuento_pct": descuento_pct,
+        "precio_venta_manual": chapa.precio_venta_manual,
+        "precio_venta_moneda": chapa.precio_venta_moneda,
         "precio_venta_usd_kg": precio_usd_kg.quantize(Decimal("0.00001")),
         "precio_venta_pesos_kg": precio_pesos_kg.quantize(Decimal("0.01")),
     }
@@ -191,9 +221,20 @@ def calcular_lista_precios_galvanizada(
 
 def calcular_precio_gruesa(chapa: ChapaGruesa, config: ConfiguracionGlobal, cotizacion: Decimal) -> dict:
     """Chapa gruesa: mismo esquema que galvanizada (costo propio en U$S/kg +
-    incremento_gruesas, en vez de un % sobre una base compartida)."""
-    incremento = config.incremento_gruesas if chapa.usar_incremento_general else Decimal("0")
-    precio_usd_kg = chapa.costo_usd_kg * (Decimal("1") + incremento)
+    incremento_gruesas, en vez de un % sobre una base compartida).
+
+    Si `chapa.precio_venta_manual` tiene un valor, pisa el costo + incremento
+    general con ese precio fijo.
+    """
+    if chapa.precio_venta_manual is not None:
+        incremento = None
+        if chapa.precio_venta_moneda == MONEDA_USD:
+            precio_usd_kg = chapa.precio_venta_manual
+        else:
+            precio_usd_kg = chapa.precio_venta_manual / cotizacion
+    else:
+        incremento = config.incremento_gruesas if chapa.usar_incremento_general else Decimal("0")
+        precio_usd_kg = chapa.costo_usd_kg * (Decimal("1") + incremento)
     precio_pesos_kg = precio_usd_kg * cotizacion
     return {
         "id": chapa.id,
@@ -202,6 +243,8 @@ def calcular_precio_gruesa(chapa: ChapaGruesa, config: ConfiguracionGlobal, coti
         "costo_usd_kg": chapa.costo_usd_kg,
         "usar_incremento_general": chapa.usar_incremento_general,
         "incremento_aplicado": incremento,
+        "precio_venta_manual": chapa.precio_venta_manual,
+        "precio_venta_moneda": chapa.precio_venta_moneda,
         "precio_venta_usd_kg": precio_usd_kg.quantize(Decimal("0.00001")),
         "precio_venta_pesos_kg": precio_pesos_kg.quantize(Decimal("0.01")),
     }
