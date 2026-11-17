@@ -3,8 +3,9 @@ from django.db import models
 from rest_framework import serializers
 
 from .models import (
-    Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, CotizacionDolar, MarkupEspesorChapa, Tubo,
-    Presupuesto, PresupuestoItem, PresupuestoItemExtra, PresupuestoItemAjusteUnitario, LongitudChapa,
+    Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, ConfiguracionHierro, CotizacionDolar, Hierro,
+    MarkupEspesorChapa, Tubo, Presupuesto, PresupuestoItem, PresupuestoItemExtra, PresupuestoItemAjusteUnitario,
+    LongitudChapa,
 )
 from .services.texto_presupuesto import descripcion_item_con_ajustes, limpiar_descripcion_item
 
@@ -104,6 +105,27 @@ class ChapaGruesaSerializer(serializers.ModelSerializer):
             "precio_venta_manual", "precio_venta_moneda", "orden", "creado", "actualizado",
         ]
         read_only_fields = ["id", "creado", "actualizado"]
+
+
+class HierroSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Hierro
+        fields = [
+            "id", "tipo", "medida", "costo_usd_kg", "activo", "usar_incremento_general",
+            "precio_venta_manual", "precio_venta_moneda", "descuento_pct", "descuento_habilitado",
+            "peso_unitario_kg", "orden", "creado", "actualizado",
+        ]
+        read_only_fields = ["id", "creado", "actualizado"]
+
+
+class ConfiguracionHierroSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConfiguracionHierro
+        fields = [
+            "tipo", "incremento_general",
+            "mostrar_costo_usd_kg", "mostrar_incremento", "mostrar_venta_usd_kg", "mostrar_venta_pesos_kg",
+            "mostrar_peso_unitario", "mostrar_venta_unidad",
+        ]
 
 
 class TuboSerializer(serializers.ModelSerializer):

@@ -9,6 +9,8 @@ router.register(r"markups-chapa", views.MarkupEspesorChapaViewSet, basename="mar
 router.register(r"tubos", views.TuboViewSet, basename="tubo")
 router.register(r"galvanizada", views.ChapaGalvanizadaViewSet, basename="galvanizada")
 router.register(r"gruesas", views.ChapaGruesaViewSet, basename="gruesa")
+router.register(r"hierros", views.HierroViewSet, basename="hierro")
+router.register(r"configuracion-hierro", views.ConfiguracionHierroViewSet, basename="configuracion-hierro")
 router.register(r"presupuestos", views.PresupuestoViewSet, basename="presupuesto")
 router.register(r"longitudes-chapa", views.LongitudChapaViewSet, basename="longitud-chapa")
 

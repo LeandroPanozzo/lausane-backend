@@ -15,7 +15,10 @@ Y en la hoja de cada cliente (ej. hoja "1"):
 from decimal import Decimal
 from typing import Optional
 
-from precios.models import Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, MarkupEspesorChapa, MONEDA_USD, Tubo
+from precios.models import (
+    Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, ConfiguracionHierro, Hierro,
+    MarkupEspesorChapa, MONEDA_USD, Tubo,
+)
 
 
 def coeficiente(incremento_pct: Decimal) -> Decimal:
@@ -49,6 +52,54 @@ def calcular_precio_base_cliente(cliente: Cliente, config: ConfiguracionGlobal, 
         incremento = cliente.incremento_negra
         precio_base = config.precio_base_negra
     return calcular_base_chapa(incremento, precio_base, cotizacion)
+
+
+def calcular_lista_precios_markup_catalogo(tipo: str, config: ConfiguracionGlobal, cotizacion: Decimal) -> list:
+    """
+    Precio "de catálogo" para la tabla de recargos de chapa DD/Negra (pantalla
+    de administración de Chapas), que no está atada a ningún cliente — a
+    diferencia de calcular_lista_precios_chapa, acá se usa la BASE sin el %
+    de incremento propio de cada cliente (equivalente a incremento 0%), igual
+    que Galvanizada/Gruesa muestran su precio sin descuento en esa misma pantalla.
+    """
+    precio_base = config.precio_base_dd if tipo == MarkupEspesorChapa.TIPO_DD else config.precio_base_negra
+    base = calcular_base_chapa(Decimal("0"), precio_base, cotizacion)
+    markups = MarkupEspesorChapa.objects.filter(tipo=tipo, activo=True).order_by("orden", "espesor")
+    resultado = []
+    for m in markups:
+        if m.precio_venta_manual is not None:
+            if m.precio_venta_moneda == MONEDA_USD:
+                precio_usd = m.precio_venta_manual
+            else:
+                precio_usd = m.precio_venta_manual / cotizacion
+            precio_pesos = precio_usd * cotizacion
+        elif m.porcentaje is None:
+            resultado.append({
+                "espesor": m.espesor,
+                "ancho_mm": m.ancho_mm,
+                "porcentaje": None,
+                "precio_venta_manual": None,
+                "precio_venta_moneda": m.precio_venta_moneda,
+                "precio_venta_usd_kg": None,
+                "precio_venta_pesos_kg": None,
+                "disponible": False,
+            })
+            continue
+        else:
+            factor = Decimal("1") + m.porcentaje
+            precio_usd = base["base_usd"] * factor
+            precio_pesos = base["base_pesos"] * factor
+        resultado.append({
+            "espesor": m.espesor,
+            "ancho_mm": m.ancho_mm,
+            "porcentaje": m.porcentaje,
+            "precio_venta_manual": m.precio_venta_manual,
+            "precio_venta_moneda": m.precio_venta_moneda,
+            "precio_venta_usd_kg": precio_usd.quantize(Decimal("0.00001")),
+            "precio_venta_pesos_kg": precio_pesos.quantize(Decimal("0.01")),
+            "disponible": True,
+        })
+    return resultado
 
 
 def calcular_lista_precios_chapa(cliente: Cliente, config: ConfiguracionGlobal, cotizacion: Decimal) -> dict:
@@ -255,3 +306,70 @@ def calcular_lista_precios_gruesa(
 ) -> list:
     chapas = queryset if queryset is not None else ChapaGruesa.objects.filter(activo=True)
     return [calcular_precio_gruesa(c, config, cotizacion) for c in chapas]
+
+
+def calcular_precio_hierro(hierro: Hierro, config_tipo: ConfiguracionHierro, cotizacion: Decimal) -> dict:
+    """Hierros (Planchuela, Redondos/Cuadrados macizos, Perfil IPN/UPN): costo
+    propio en U$S/kg + el incremento general propio de su tipo (config_tipo).
+
+    El descuento es por item (igual que Tubo.descuento_pct/descuento_habilitado,
+    ver aplicar_descuento_hierro) — el precio acá es SIN descuento; el cliente
+    lo puede pisar puntualmente al armar el carrito sin tocar el default del catálogo.
+    """
+    if hierro.precio_venta_manual is not None:
+        incremento = None
+        if hierro.precio_venta_moneda == MONEDA_USD:
+            precio_usd_kg = hierro.precio_venta_manual
+        else:
+            precio_usd_kg = hierro.precio_venta_manual / cotizacion
+    else:
+        incremento = config_tipo.incremento_general if hierro.usar_incremento_general else Decimal("0")
+        precio_usd_kg = hierro.costo_usd_kg * (Decimal("1") + incremento)
+    precio_pesos_kg = (precio_usd_kg * cotizacion).quantize(Decimal("0.01"))
+
+    precio_usd_unidad = None
+    precio_pesos_unidad = None
+    precio_pesos_unidad_con_descuento = None
+    if hierro.peso_unitario_kg is not None:
+        precio_usd_unidad = (precio_usd_kg * hierro.peso_unitario_kg).quantize(Decimal("0.00001"))
+        precio_pesos_unidad = (precio_usd_kg * hierro.peso_unitario_kg * cotizacion).quantize(Decimal("0.01"))
+        precio_pesos_unidad_con_descuento = aplicar_descuento_hierro(
+            precio_pesos_unidad, hierro.descuento_pct, hierro.descuento_habilitado
+        )
+
+    return {
+        "id": hierro.id,
+        "tipo": hierro.tipo,
+        "medida": hierro.medida,
+        "costo_usd_kg": hierro.costo_usd_kg,
+        "usar_incremento_general": hierro.usar_incremento_general,
+        "incremento_aplicado": incremento,
+        "descuento_pct": hierro.descuento_pct,
+        "descuento_habilitado": hierro.descuento_habilitado,
+        "precio_venta_manual": hierro.precio_venta_manual,
+        "precio_venta_moneda": hierro.precio_venta_moneda,
+        "precio_venta_usd_kg": precio_usd_kg.quantize(Decimal("0.00001")),
+        "precio_venta_pesos_kg": precio_pesos_kg,
+        "precio_venta_pesos_kg_con_descuento": aplicar_descuento_hierro(
+            precio_pesos_kg, hierro.descuento_pct, hierro.descuento_habilitado
+        ),
+        "peso_unitario_kg": hierro.peso_unitario_kg,
+        "precio_venta_usd_unidad": precio_usd_unidad,
+        "precio_venta_pesos_unidad": precio_pesos_unidad,
+        "precio_venta_pesos_unidad_con_descuento": precio_pesos_unidad_con_descuento,
+    }
+
+
+def aplicar_descuento_hierro(precio_pesos_kg: Decimal, descuento_pct: Decimal, descuento_habilitado: bool) -> Decimal:
+    """Precio final de un hierro aplicando (o no) su % de descuento — igual que aplicar_descuento_tubo."""
+    if not descuento_habilitado:
+        return precio_pesos_kg.quantize(Decimal("0.01"))
+    factor = Decimal("1") - (descuento_pct / Decimal("100"))
+    return (precio_pesos_kg * factor).quantize(Decimal("0.01"))
+
+
+def calcular_lista_precios_hierro(
+    tipo: str, config_tipo: ConfiguracionHierro, cotizacion: Decimal, queryset: Optional[list] = None,
+) -> list:
+    hierros = queryset if queryset is not None else Hierro.objects.filter(tipo=tipo, activo=True)
+    return [calcular_precio_hierro(h, config_tipo, cotizacion) for h in hierros]

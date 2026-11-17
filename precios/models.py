@@ -343,6 +343,121 @@ class ChapaGruesa(models.Model):
         return f"Gruesa · espesor {self.espesor} · {self.ancho_mm}mm"
 
 
+class ConfiguracionHierro(models.Model):
+    """
+    Config propia de cada tipo de Hierro (Planchuela, Redondos macizos,
+    Cuadrados macizos, Perfil IPN, Perfil UPN): su % de incremento general
+    (cada tipo tiene el suyo, a diferencia de Galvanizada/Gruesa que tienen
+    uno solo) y qué columnas de la tabla de catálogo se muestran para ese
+    tipo — por si alguna no aplica y se prefiere no verla.
+    """
+
+    TIPO_PLANCHUELA = "PLANCHUELA"
+    TIPO_REDONDO_MACIZO = "REDONDO_MACIZO"
+    TIPO_CUADRADO_MACIZO = "CUADRADO_MACIZO"
+    TIPO_PERFIL_IPN = "PERFIL_IPN"
+    TIPO_PERFIL_UPN = "PERFIL_UPN"
+    TIPO_CHOICES = [
+        (TIPO_PLANCHUELA, "Planchuela"),
+        (TIPO_REDONDO_MACIZO, "Redondos macizos"),
+        (TIPO_CUADRADO_MACIZO, "Cuadrados macizos"),
+        (TIPO_PERFIL_IPN, "Perfil IPN"),
+        (TIPO_PERFIL_UPN, "Perfil UPN"),
+    ]
+
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, unique=True)
+    incremento_general = models.DecimalField(
+        max_digits=6, decimal_places=4, default=Decimal("0.20"),
+        help_text="% de incremento general para este tipo de hierro, como fracción (0.20 = 20%)",
+    )
+    mostrar_costo_usd_kg = models.BooleanField(default=True)
+    mostrar_incremento = models.BooleanField(default=True)
+    mostrar_venta_usd_kg = models.BooleanField(default=True)
+    mostrar_venta_pesos_kg = models.BooleanField(default=True)
+    mostrar_peso_unitario = models.BooleanField(default=True)
+    mostrar_venta_unidad = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["tipo"]
+        verbose_name = "Configuración de hierro"
+        verbose_name_plural = "Configuraciones de hierro"
+
+    @classmethod
+    def actual(cls, tipo):
+        obj, _ = cls.objects.get_or_create(tipo=tipo)
+        return obj
+
+    @classmethod
+    def todas(cls):
+        """Garantiza que exista una fila por cada tipo del catálogo (TIPO_CHOICES) y las devuelve todas."""
+        for tipo, _ in cls.TIPO_CHOICES:
+            cls.objects.get_or_create(tipo=tipo)
+        return cls.objects.all().order_by("tipo")
+
+    def __str__(self):
+        return f"Configuración {self.get_tipo_display()}"
+
+
+class Hierro(models.Model):
+    """
+    Catálogo de Hierros: Planchuela, Redondos macizos, Cuadrados macizos,
+    Perfil IPN y Perfil UPN — comparten un mismo esquema (igual a
+    ChapaGalvanizada: costo propio en U$S/kg + incremento general propio de
+    su tipo, con posibilidad de pisarlo con un precio de venta manual), pero
+    en vez de espesor/ancho se identifican con una sola 'medida' de texto
+    libre, ya que cada tipo se mide distinto (ej: 'IPN 80', '1/2"', '25x3mm').
+    """
+
+    tipo = models.CharField(max_length=20, choices=ConfiguracionHierro.TIPO_CHOICES)
+    medida = models.CharField(max_length=60, help_text="Ej: 'IPN 80', '1/2\"', '25x3mm'")
+    costo_usd_kg = models.DecimalField(max_digits=10, decimal_places=4, help_text="Costo de compra en U$S/kg")
+    activo = models.BooleanField(default=True, help_text="Si está inactivo, no aparece en la lista de precios del cliente")
+    usar_incremento_general = models.BooleanField(
+        default=True,
+        help_text=(
+            "Si está destildado, este hierro se vende directo al costo (sin aplicar "
+            "el incremento general de su tipo) — para cuando una medida puntual no debe llevar recargo."
+        ),
+    )
+    precio_venta_manual = models.DecimalField(
+        max_digits=12, decimal_places=4, null=True, blank=True,
+        help_text=(
+            "Precio de venta por kg cargado a mano. Si tiene un valor, se usa "
+            "directamente (en vez de costo + incremento general) para calcular "
+            "el presupuesto — dejarlo vacío vuelve a usar el cálculo automático."
+        ),
+    )
+    precio_venta_moneda = models.CharField(max_length=3, choices=MONEDA_CHOICES, default=MONEDA_ARS)
+    descuento_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("0"),
+        validators=[MinValueValidator(Decimal("0"))],
+        help_text="% de descuento por defecto sobre el precio de venta (ej: 2 = 2%) — igual que en Tubos",
+    )
+    descuento_habilitado = models.BooleanField(
+        default=True,
+        help_text="Si está activo, el descuento se aplica por defecto al agregar este item a un presupuesto",
+    )
+    peso_unitario_kg = models.DecimalField(
+        max_digits=10, decimal_places=4, null=True, blank=True,
+        help_text=(
+            "Peso por unidad/barra (kg), opcional — igual que Tubo.peso_unitario_kg. Si se "
+            "completa, además del precio por kg se calcula el precio de venta por unidad."
+        ),
+    )
+    orden = models.PositiveIntegerField(default=0)
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("tipo", "medida")
+        ordering = ["tipo", "orden", "medida"]
+        verbose_name = "Hierro"
+        verbose_name_plural = "Hierros"
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} · {self.medida}"
+
+
 class Tubo(models.Model):
     """
     Catálogo de tubos estructurales. Réplica de las tablas 'Peso Teorico Tubo'
@@ -452,8 +567,11 @@ class Presupuesto(models.Model):
 class PresupuestoItem(models.Model):
     TIPO_CHAPA = "CHAPA"
     TIPO_TUBO = "TUBO"
+    TIPO_HIERRO = "HIERRO"
     TIPO_OTRO = "OTRO"
-    TIPO_CHOICES = [(TIPO_CHAPA, "Chapa"), (TIPO_TUBO, "Tubo"), (TIPO_OTRO, "Otro")]
+    TIPO_CHOICES = [
+        (TIPO_CHAPA, "Chapa"), (TIPO_TUBO, "Tubo"), (TIPO_HIERRO, "Hierro"), (TIPO_OTRO, "Otro"),
+    ]
 
     presupuesto = models.ForeignKey(Presupuesto, on_delete=models.CASCADE, related_name="items")
     tipo = models.CharField(max_length=10, choices=TIPO_CHOICES, default=TIPO_OTRO)

@@ -10,7 +10,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import (
-    Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, MarkupEspesorChapa, Tubo, Presupuesto,
+    Cliente, ChapaGalvanizada, ChapaGruesa, ConfiguracionGlobal, ConfiguracionHierro, Hierro,
+    MarkupEspesorChapa, Tubo, Presupuesto,
     PresupuestoItem, PresupuestoItemExtra, PresupuestoItemAjusteUnitario, LongitudChapa,
 )
 from .serializers import (
@@ -19,10 +20,12 @@ from .serializers import (
     ChapaGruesaSerializer,
     ClienteSerializer,
     ConfiguracionGlobalSerializer,
+    ConfiguracionHierroSerializer,
     ContactoPublicoSerializer,
     CotizacionDolarSerializer,
     ElegirImpuestoSerializer,
     EnviarEmailSerializer,
+    HierroSerializer,
     LongitudChapaSerializer,
     MarkupEspesorChapaSerializer,
     PresupuestoItemAjusteUnitarioSerializer,
@@ -86,6 +89,23 @@ class MarkupEspesorChapaViewSet(viewsets.ModelViewSet):
         if tipo:
             qs = qs.filter(tipo=tipo)
         return qs
+
+    @action(detail=False, methods=["get"], url_path="lista-precios")
+    def lista_precios(self, request):
+        tipo = request.query_params.get("tipo", MarkupEspesorChapa.TIPO_DD)
+        config = ConfiguracionGlobal.actual()
+        try:
+            cotizacion = cotizacion_dolar.obtener_cotizacion_actual(
+                forzar_actualizacion=request.query_params.get("forzar_dolar") == "true"
+            )
+        except cotizacion_dolar.CotizacionDolarError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        precios = calculo_precios.calcular_lista_precios_markup_catalogo(tipo, config, cotizacion.venta)
+        return Response({
+            "cotizacion_dolar": CotizacionDolarSerializer(cotizacion).data,
+            "markups": precios,
+        })
 
 
 class LongitudChapaViewSet(viewsets.ModelViewSet):
@@ -212,6 +232,72 @@ class ChapaGruesaViewSet(viewsets.ModelViewSet):
             "incremento_gruesas": config.incremento_gruesas,
             "chapas": precios,
         })
+
+
+class HierroViewSet(viewsets.ModelViewSet):
+    """CRUD de Hierros (Planchuela, Redondos/Cuadrados macizos, Perfil IPN/UPN) + precio calculado.
+
+    GET /api/hierros/?tipo=PLANCHUELA           -> listar por tipo
+    GET /api/hierros/lista-precios/?tipo=...    -> catálogo con precio calculado
+    """
+
+    queryset = Hierro.objects.all()
+    serializer_class = HierroSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    search_fields = ["medida"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        tipo = self.request.query_params.get("tipo")
+        if tipo:
+            qs = qs.filter(tipo=tipo)
+        return qs
+
+    @action(detail=False, methods=["get"], url_path="lista-precios")
+    def lista_precios(self, request):
+        tipo = request.query_params.get("tipo")
+        if not tipo:
+            return Response({"detail": "Falta el parámetro ?tipo="}, status=status.HTTP_400_BAD_REQUEST)
+        config_tipo = ConfiguracionHierro.actual(tipo)
+        try:
+            cotizacion = cotizacion_dolar.obtener_cotizacion_actual(
+                forzar_actualizacion=request.query_params.get("forzar_dolar") == "true"
+            )
+        except cotizacion_dolar.CotizacionDolarError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        precios = calculo_precios.calcular_lista_precios_hierro(tipo, config_tipo, cotizacion.venta)
+        return Response({
+            "cotizacion_dolar": CotizacionDolarSerializer(cotizacion).data,
+            "config": ConfiguracionHierroSerializer(config_tipo).data,
+            "hierros": precios,
+        })
+
+
+class ConfiguracionHierroViewSet(viewsets.ModelViewSet):
+    """
+    Config por tipo de hierro: % de incremento general propio de cada tipo +
+    qué columnas de la tabla se muestran. Siempre hay una fila por tipo
+    (se crean solas la primera vez que se piden).
+    GET /api/configuracion-hierro/           -> las 5, una por tipo
+    PATCH /api/configuracion-hierro/{tipo}/  -> actualizar una
+    """
+
+    queryset = ConfiguracionHierro.objects.all()
+    serializer_class = ConfiguracionHierroSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "tipo"
+    http_method_names = ["get", "patch", "head", "options"]
+
+    def list(self, request, *args, **kwargs):
+        ConfiguracionHierro.todas()
+        return super().list(request, *args, **kwargs)
+
+    def get_object(self):
+        # La fila de un tipo se crea sola la primera vez que se pide (GET o
+        # PATCH), igual que ConfiguracionGlobal.actual() — así no hace falta
+        # una migración de datos para "sembrar" las 5 filas de antemano.
+        return ConfiguracionHierro.actual(self.kwargs["tipo"])
 
 
 class ConfiguracionGlobalView(generics.RetrieveUpdateAPIView):
