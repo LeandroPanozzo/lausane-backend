@@ -12,7 +12,7 @@ def enviar_presupuesto_por_email(presupuesto: Presupuesto, destinatario: str, me
     cuerpo = mensaje.strip() or (
         f"Hola {presupuesto.cliente.nombre},\n\n"
         f"Adjuntamos el presupuesto N° {presupuesto.codigo} solicitado.\n\n"
-        f"Total: $ {presupuesto.total_pesos:,.2f}\n\n"
+        f"Total: $ {presupuesto.total_con_impuestos_pesos:,.2f}\n\n"
         f"Ante cualquier consulta, quedamos a disposición.\n\n"
         f"Saludos,\nLausane S.A.C."
     )

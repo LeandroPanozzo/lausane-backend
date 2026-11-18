@@ -208,13 +208,15 @@ class PresupuestoSerializer(serializers.ModelSerializer):
     items = PresupuestoItemSerializer(many=True)
     cliente_detalle = ClienteResumenSerializer(source="cliente", read_only=True)
     total_pesos = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
+    total_con_impuestos_pesos = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
     codigo = serializers.CharField(read_only=True)
 
     class Meta:
         model = Presupuesto
         fields = [
             "id", "numero", "codigo", "cliente", "cliente_detalle", "cotizacion_dolar",
-            "estado", "impuesto_pct", "notas", "token_publico", "total_pesos", "items", "creado", "actualizado",
+            "estado", "impuesto_pct", "notas", "token_publico", "total_pesos", "total_con_impuestos_pesos",
+            "items", "creado", "actualizado",
         ]
         read_only_fields = [
             "id", "numero", "codigo", "estado", "impuesto_pct", "token_publico", "creado", "actualizado",

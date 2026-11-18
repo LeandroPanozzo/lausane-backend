@@ -557,6 +557,19 @@ class Presupuesto(models.Model):
         return sum((item.total_con_extras_pesos for item in self.items.all()), Decimal("0"))
 
     @property
+    def total_con_impuestos_pesos(self) -> Decimal:
+        """
+        Total final a cobrar: neto + IVA (si ya se eligió el %). Este es el
+        que hay que mostrar en cualquier texto o documento que diga "total"
+        — usar total_pesos ahí mostraría el neto sin impuestos por error.
+        """
+        neto = self.total_pesos
+        if self.impuesto_pct is None:
+            return neto
+        monto_impuestos = (neto * self.impuesto_pct / Decimal("100")).quantize(Decimal("0.01"))
+        return neto + monto_impuestos
+
+    @property
     def codigo(self) -> str:
         return f"LAU-{self.numero}"
 

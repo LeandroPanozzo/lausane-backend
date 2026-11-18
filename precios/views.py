@@ -571,7 +571,7 @@ class PresupuestoViewSet(viewsets.ModelViewSet):
 
         texto = (
             f"Hola {presupuesto.cliente.nombre}, te compartimos el Presupuesto Lausane "
-            f"N° {presupuesto.codigo} por un total de {_formato_pesos(presupuesto.total_pesos)}."
+            f"N° {presupuesto.codigo} por un total de {_formato_pesos(presupuesto.total_con_impuestos_pesos)}."
         )
         pdf_bytes = generar_pdf_presupuesto(presupuesto)
         nombre_archivo = f"presupuesto_lausane_{presupuesto.numero}.pdf"
